@@ -7,6 +7,10 @@
   PNG, JPG ou WebP → SVG, PDF, EPS, DXF ou PNG. Grátis, sem marca d'água e sem enviar sua imagem para nenhum servidor.
 </p>
 
+<p align="center">
+  <a href="https://vetora-two.vercel.app/"><b>Abrir o Vetora →</b></a>
+</p>
+
 ---
 
 ## O que ele faz
@@ -77,4 +81,4 @@ marca/        logo e nome
 
 ## Publicação
 
-Publicado no Vercel: cada `push` na `main` gera uma nova versão do site. Não há servidor nem custo de infraestrutura.
+Publicado no Vercel em https://vetora-two.vercel.app/ — cada `push` na `main` gera uma nova versão do site. Não há servidor nem custo de infraestrutura.
