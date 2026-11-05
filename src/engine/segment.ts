@@ -72,7 +72,9 @@ function pickPalette(lab: Float32Array, alpha: Uint8Array, w: number, h: number,
   }
   pts.sort((a, b) => b[3] - a[3])
   const md = photo ? Math.min(inp.mergeDist, 9) : inp.mergeDist
-  const md2 = md * md
+  // agrupamento inicial apertado: tons próximos mas diferentes (creme × branco) ficam separados;
+  // a junção de verdade acontece depois, olhando o tamanho de cada cor
+  const md2 = photo ? md * md : Math.min(md, 5.5) ** 2
   // agrupamento guloso: das cores mais comuns para as raras
   let cl: number[][] = [] // [L,a,b,weight]
   for (const p of pts) {
@@ -104,18 +106,39 @@ function pickPalette(lab: Float32Array, alpha: Uint8Array, w: number, h: number,
     }
     cl = acc.filter((a) => a[3] > 0).map((a) => [a[0] / a[3], a[1] / a[3], a[2] / a[3], a[3]])
   }
-  // junta cores que ficaram quase iguais depois do refinamento
+  // espalhamento de cada cor (variância em Lab): ruído de JPEG espalha; cor lisa de verdade não
+  const vr = cl.map(() => [0, 0])
+  for (const p of pts) {
+    let best = 0, bd = Infinity
+    for (let k = 0; k < cl.length; k++) {
+      const d = (cl[k][0] - p[0]) ** 2 + (cl[k][1] - p[1]) ** 2 + (cl[k][2] - p[2]) ** 2
+      if (d < bd) { bd = d; best = k }
+    }
+    vr[best][0] += bd * p[3]; vr[best][1] += p[3]
+  }
+  for (let k = 0; k < cl.length; k++) cl[k][4] = (vr[k][1] ? vr[k][0] / vr[k][1] : 0) + 1
+  // junta cores próximas: quando a distância é pequena perto do espalhamento delas (ruído),
+  // quando uma é rara, ou quando o usuário pediu para juntar mais (slider alto).
+  // Duas cores lisas e bem separadas (creme x branco) ficam.
   const close2 = (md * 0.8) ** 2
+  const forceMerge = photo || md > 11.5
   for (;;) {
     let bi = -1, bj = -1, bd = close2
     for (let i = 0; i < cl.length; i++)
       for (let j = i + 1; j < cl.length; j++) {
         const d = (cl[i][0] - cl[j][0]) ** 2 + (cl[i][1] - cl[j][1]) ** 2 + (cl[i][2] - cl[j][2]) ** 2
-        if (d < bd) { bd = d; bi = i; bj = j }
+        if (d >= bd) continue
+        const small = Math.min(cl[i][3], cl[j][3]) < 0.03 * Math.max(cl[i][3], cl[j][3])
+        const spread = 2.2 * (Math.sqrt(cl[i][4]) + Math.sqrt(cl[j][4]))
+        if (!forceMerge && !small && Math.sqrt(d) > Math.max(3, spread)) continue
+        bd = d; bi = i; bj = j
       }
     if (bi < 0) break
     const a = cl[bi], b = cl[bj], wt = a[3] + b[3]
-    cl[bi] = [(a[0] * a[3] + b[0] * b[3]) / wt, (a[1] * a[3] + b[1] * b[3]) / wt, (a[2] * a[3] + b[2] * b[3]) / wt, wt]
+    const m = [(a[0] * a[3] + b[0] * b[3]) / wt, (a[1] * a[3] + b[1] * b[3]) / wt, (a[2] * a[3] + b[2] * b[3]) / wt]
+    const shA = (a[0] - m[0]) ** 2 + (a[1] - m[1]) ** 2 + (a[2] - m[2]) ** 2
+    const shB = (b[0] - m[0]) ** 2 + (b[1] - m[1]) ** 2 + (b[2] - m[2]) ** 2
+    cl[bi] = [m[0], m[1], m[2], wt, (a[3] * (a[4] + shA) + b[3] * (b[4] + shB)) / wt]
     cl.splice(bj, 1)
   }
   // descarta cores raras (ruído)
@@ -215,7 +238,12 @@ function addThinColors(pal: Float32Array, lab: Float32Array, alpha: Uint8Array, 
       let L = 0, a = 0, b = 0, dsum = 0
       for (const t of top) { L += lab[t.i * 3]; a += lab[t.i * 3 + 1]; b += lab[t.i * 3 + 2]; dsum += Math.sqrt(t.d) }
       const score = dsum / top.length
-      if (score > addDist) { addDist = score; add = [L / top.length, a / top.length, b / top.length] }
+      const cand = [L / top.length, a / top.length, b / top.length]
+      // não cria uma cor quase igual a uma que já existe (traço fino de JPEG puxa tons parecidos)
+      let nearest = Infinity
+      for (let k = 0; k < cur.length / 3; k++) nearest = Math.min(nearest, dLab2(cand, 0, cur, k * 3))
+      if (nearest < 12 * 12) continue
+      if (score > addDist) { addDist = score; add = cand }
     }
     if (!add.length) break
     const next = new Float32Array(cur.length + add.length)
@@ -275,61 +303,88 @@ export function segment(inp: SegmentInput): Segmentation {
   const cand: number[] = []
   const pr = new Float32Array(3)
   const mix = new Float32Array(3)
+  /** Melhor explicação do pixel com as cores candidatas: uma cor só, ou mistura de duas (antialiasing). */
+  const explain = (i: number): [number, number] => {
+    const pRgb = [rgba[i * 4] / 255, rgba[i * 4 + 1] / 255, rgba[i * 4 + 2] / 255]
+    const a = alpha[i] / 255
+    let bestL = -1, bestE = Infinity
+    for (const c of cand) {
+      if (c === T) continue
+      const e = dLab2(lab, i * 3, pal, c * 3)
+      if (e < bestE) { bestE = e; bestL = c }
+    }
+    let pairL = -1, pairE = Infinity
+    for (let u = 0; u < cand.length; u++)
+      for (let v = u + 1; v < cand.length; v++) {
+        const A = cand[u], Bc = cand[v]
+        if (A === T || Bc === T) {
+          const op = A === T ? Bc : A
+          const e = dLab2(lab, i * 3, pal, op * 3) * 0.5
+          if (e < pairE) { pairE = e; pairL = a >= 0.5 ? op : T }
+          continue
+        }
+        const ca = palRgb[A], cb = palRgb[Bc]
+        let num = 0, den = 0
+        for (let k = 0; k < 3; k++) {
+          const d = ca[k] / 255 - cb[k] / 255
+          num += (pRgb[k] - cb[k] / 255) * d
+          den += d * d
+        }
+        const t = den > 1e-6 ? Math.max(0, Math.min(1, num / den)) : 0.5
+        for (let k = 0; k < 3; k++) pr[k] = (t * ca[k] + (1 - t) * cb[k])
+        rgbToLab(Math.round(pr[0]), Math.round(pr[1]), Math.round(pr[2]), mix, 0)
+        const e = dLab2(lab, i * 3, mix, 0)
+        if (e < pairE) { pairE = e; pairL = t >= 0.5 ? A : Bc }
+      }
+    if (alpha[i] < 128) return [T, 0]
+    if (pairL >= 0 && pairE < bestE * 0.6) return [pairL, pairE]
+    if (bestL >= 0) return [bestL, bestE]
+    return [-1, Infinity]
+  }
+  const gather = (x: number, y: number, onlyFlat: boolean) => {
+    cand.length = 0
+    const i = y * w + x
+    for (let dy = -R; dy <= R; dy++) {
+      const yy = y + dy
+      if (yy < 0 || yy >= h) continue
+      for (let dx = -R; dx <= R; dx++) {
+        const xx = x + dx
+        if (xx < 0 || xx >= w) continue
+        const j = yy * w + xx
+        const l = label[j]
+        if (l < 0 || cand.indexOf(l) >= 0) continue
+        if (onlyFlat && j < i && !flat[j] && l !== T) continue
+        cand.push(l)
+      }
+    }
+  }
+  // 2a) com as cores lisas por perto; pixel mal explicado fica para depois
+  const deferred: number[] = []
+  const GOOD = 12 * 12
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++) {
       const i = y * w + x
       if (label[i] !== -1) continue
-      cand.length = 0
-      for (let dy = -R; dy <= R; dy++) {
-        const yy = y + dy
-        if (yy < 0 || yy >= h) continue
-        for (let dx = -R; dx <= R; dx++) {
-          const xx = x + dx
-          if (xx < 0 || xx >= w) continue
-          const l = label[yy * w + xx]
-          if (l >= 0 && (yy * w + xx < i ? flat[yy * w + xx] || l === T : true) && cand.indexOf(l) < 0) cand.push(l)
-        }
-      }
-      const pRgb = [rgba[i * 4] / 255, rgba[i * 4 + 1] / 255, rgba[i * 4 + 2] / 255]
-      const a = alpha[i] / 255
-      if (cand.length === 0) { label[i] = nearest(i * 3); continue }
-      // melhor cor única
-      let bestL = -1, bestE = Infinity
-      for (const c of cand) {
-        if (c === T) continue
-        const e = dLab2(lab, i * 3, pal, c * 3)
-        if (e < bestE) { bestE = e; bestL = c }
-      }
-      // melhor par (mistura linear em sRGB)
-      let pairL = -1, pairE = Infinity
-      for (let u = 0; u < cand.length; u++)
-        for (let v = u + 1; v < cand.length; v++) {
-          const A = cand[u], Bc = cand[v]
-          if (A === T || Bc === T) {
-            const op = A === T ? Bc : A
-            // mistura com transparente: decide pelo alpha
-            const e = dLab2(lab, i * 3, pal, op * 3) * 0.5
-            if (e < pairE) { pairE = e; pairL = a >= 0.5 ? op : T }
-            continue
-          }
-          const ca = palRgb[A], cb = palRgb[Bc]
-          let num = 0, den = 0
-          for (let k = 0; k < 3; k++) {
-            const d = ca[k] / 255 - cb[k] / 255
-            num += (pRgb[k] - cb[k] / 255) * d
-            den += d * d
-          }
-          const t = den > 1e-6 ? Math.max(0, Math.min(1, num / den)) : 0.5
-          for (let k = 0; k < 3; k++) pr[k] = (t * ca[k] + (1 - t) * cb[k])
-          rgbToLab(Math.round(pr[0]), Math.round(pr[1]), Math.round(pr[2]), mix, 0)
-          const e = dLab2(lab, i * 3, mix, 0)
-          if (e < pairE) { pairE = e; pairL = t >= 0.5 ? A : Bc }
-        }
-      if (alpha[i] < 128) label[i] = T
-      else if (pairL >= 0 && pairE < bestE * 0.6) label[i] = pairL
-      else if (bestL >= 0 && bestE < 30 * 30) label[i] = bestL
-      else label[i] = nearest(i * 3)
+      gather(x, y, true)
+      const [l, e] = cand.length ? explain(i) : [-1, Infinity]
+      if (l >= 0 && e < GOOD) label[i] = l
+      else { label[i] = -2; deferred.push(i) }
     }
+  // 2b) traços finos (sem pixel liso): usa também os vizinhos já resolvidos, crescendo de fora para dentro
+  let pending = deferred
+  for (let round = 0; round < 4 && pending.length; round++) {
+    const next: number[] = []
+    const lim = round < 3 ? 20 * 20 : 30 * 30
+    for (const i of pending) {
+      const x = i % w, y = (i - x) / w
+      gather(x, y, false)
+      const [l, e] = cand.length ? explain(i) : [-1, Infinity]
+      if (l >= 0 && e < lim) label[i] = l
+      else next.push(i)
+    }
+    pending = next
+  }
+  for (const i of pending) label[i] = nearest(i * 3)
 
   // cores juntadas pelo usuário
   if (inp.mergeMap) {

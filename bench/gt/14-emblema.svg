@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"><rect width="400" height="400" fill="#f7f3ea"/>
+<circle cx="200" cy="200" r="178" fill="#1f4d3a"/><circle cx="200" cy="200" r="166" fill="none" stroke="#f7f3ea" stroke-width="4"/>
+<circle cx="200" cy="200" r="118" fill="#f7f3ea"/>
+<defs><path id="topo" d="M 70 200 A 130 130 0 0 1 330 200"/><path id="base" d="M 64 206 A 136 136 0 0 0 336 206"/></defs>
+<text font-family="Arial" font-weight="bold" font-size="30" letter-spacing="4" fill="#f7f3ea"><textPath href="#topo" startOffset="50%" text-anchor="middle">VETORA OUTDOOR</textPath></text>
+<text font-family="Arial" font-weight="bold" font-size="22" letter-spacing="3" fill="#e9b949"><textPath href="#base" startOffset="50%" text-anchor="middle">EST. 2026</textPath></text>
+<circle cx="245" cy="160" r="22" fill="#e9b949"/>
+<path d="M95 262 L160 168 L195 214 L230 176 L305 262 Z" fill="#2e6b4f"/>
+<path d="M160 168 L177 192 L166 188 L156 198 L146 186 Z" fill="#f7f3ea"/><path d="M230 176 L246 194 L236 192 L228 200 L220 190 Z" fill="#f7f3ea"/>
+<path d="M118 262 L132 226 L146 262 Z M130 262 L132 280 L134 262" fill="#173a2b"/>
+<path d="M262 262 L280 214 L298 262 Z" fill="#173a2b"/><rect x="277" y="262" width="6" height="16" fill="#173a2b"/>
+<rect x="84" y="262" width="232" height="14" fill="#1f4d3a"/>
+<circle cx="70" cy="200" r="6" fill="#e9b949"/><circle cx="330" cy="200" r="6" fill="#e9b949"/>
+</svg>

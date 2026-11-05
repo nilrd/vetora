@@ -11,6 +11,8 @@
 
 ## O que ele faz
 
+- **Demonstração ao vivo na tela inicial:** o motor vetoriza o exemplo na hora; uma lupa arrastável (zoom de 2x a 16x) compara os pixels com o vetor e mostra os nós e as alças das curvas.
+
 - **Bordas exatas:** cores vizinhas dividem a mesma curva, então não sobra fresta branca nem sobreposição.
 - **Precisão sub-pixel:** usa o antialiasing da imagem original para pôr a borda no lugar real, não na grade de pixels.
 - **Curvas limpas:** círculo sai como círculo, canto vivo sai vivo, com poucos nós e fácil de editar.
@@ -22,7 +24,7 @@
 
 ## Qualidade, medida
 
-Banco de testes próprio (`bench/`): 12 desenhos-gabarito em PNG, PNG pequeno (140 px) e JPEG comprimido. Cada vetor é renderizado em 4x e comparado com o gabarito (ΔE médio; menor é melhor).
+Banco de testes próprio (`bench/`): 15 desenhos-gabarito (12 na tabela abaixo + mascote, emblema e logo com texto) em PNG, PNG pequeno (140 px) e JPEG comprimido. Cada vetor é renderizado em 4x e comparado com o gabarito (ΔE médio; menor é melhor).
 
 | variante | Vetora | VTracer |
 | --- | --- | --- |

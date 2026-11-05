@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"><rect width="400" height="400" fill="#f2e8da"/>
+<g fill="none" stroke="#5a3825" stroke-width="7" stroke-linecap="round">
+<path d="M170 70 C 150 92, 190 108, 170 132"/><path d="M205 58 C 185 84, 228 102, 205 132"/><path d="M240 70 C 220 92, 260 108, 240 132"/>
+</g>
+<path d="M112 150 L288 150 C 288 222, 258 262, 200 262 C 142 262, 112 222, 112 150 Z" fill="#5a3825"/>
+<path d="M286 168 C 330 162, 338 214, 284 222" fill="none" stroke="#5a3825" stroke-width="14"/>
+<path d="M92 272 L308 272 C 300 286, 284 292, 266 292 L 134 292 C 116 292, 100 286, 92 272 Z" fill="#c8823f"/>
+<path d="M150 178 C 170 196, 230 196, 250 178" fill="none" stroke="#f2e8da" stroke-width="6" stroke-linecap="round"/>
+<text x="200" y="350" font-family="Georgia" font-style="italic" font-weight="bold" font-size="48" text-anchor="middle" fill="#5a3825">Café Vetora</text>
+</svg>

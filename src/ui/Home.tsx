@@ -1,47 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { ACCEPT } from '../lib/image.ts'
 import { IUpload } from './icons.tsx'
-import { HERO } from './heroData.ts'
-
-const EXAMPLES = [
-  { file: 'exemplos/adesivo.png', name: 'adesivo.png', label: 'Adesivo' },
-  { file: 'exemplos/ilustracao.png', name: 'ilustracao.png', label: 'Ilustração' },
-  { file: 'exemplos/texto.jpg', name: 'texto.jpg', label: 'Texto em JPG' },
-  { file: 'exemplos/engrenagem.png', name: 'engrenagem.png', label: 'Ícone' },
-]
+import { LiveDemo } from './LiveDemo.tsx'
 
 interface Props {
   onFile: (f: Blob, name: string) => void
   onBatch: (files: File[]) => void
   error: string
-}
-
-/** Pixels reais de um lado; o vetor que o motor gerou do outro, com nós e alças. */
-function Lens() {
-  const s = HERO.size
-  return (
-    <div className="lens" aria-hidden="true">
-      <div className="half"><img className="pix" src="hero-pixels.png" alt="" /></div>
-      <div className="half vecside">
-        <svg viewBox={`0 0 ${s} ${s}`}>
-          <rect width={s} height={s} fill="#f4f2ee" />
-          {HERO.shapes.map((x, i) => <path key={i} d={x.d} fill={x.c} />)}
-          {HERO.handles.map(([a, b], i) => (
-            <g key={i}>
-              <line x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke="#141413" strokeWidth={0.14} />
-              <circle cx={b[0]} cy={b[1]} r={0.45} fill="#141413" />
-            </g>
-          ))}
-          {HERO.anchors.map(([x, y], i) => (
-            <rect key={i} x={x - 0.75} y={y - 0.75} width={1.5} height={1.5} fill="#fff" stroke="#141413" strokeWidth={0.28} />
-          ))}
-        </svg>
-      </div>
-      <div className="seam" />
-      <span className="cap l">PNG · {s}×{s} px</span>
-      <span className="cap r">SVG · {HERO.anchors.length} nós na estrela</span>
-    </div>
-  )
 }
 
 export function Home({ onFile, onBatch, error }: Props) {
@@ -89,16 +54,8 @@ export function Home({ onFile, onBatch, error }: Props) {
             <input ref={input} type="file" accept={ACCEPT} multiple onChange={(e) => { take(e.target.files); e.target.value = '' }} />
           </div>
           {error && <div className="err" role="alert">{error}</div>}
-          <div className="samples">
-            <span className="label">Testar com</span>
-            {EXAMPLES.map((x) => (
-              <button key={x.file} aria-label={`Exemplo ${x.name}`} onClick={async () => { const b = await (await fetch(x.file)).blob(); onFile(b, x.name) }}>
-                <img src={x.file} alt="" />{x.label}
-              </button>
-            ))}
-          </div>
         </div>
-        <Lens />
+        <LiveDemo onOpen={onFile} />
       </section>
 
       <section className="spec" id="como-funciona">
