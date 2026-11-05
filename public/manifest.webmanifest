@@ -1,0 +1,11 @@
+{
+  "name": "Vetora",
+  "short_name": "Vetora",
+  "description": "Vetorização de imagens de alta qualidade, direto no navegador.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f6f6fb",
+  "theme_color": "#534ab7",
+  "lang": "pt-BR",
+  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

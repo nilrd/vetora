@@ -1,0 +1,72 @@
+feature,area,priority,original,clone,notes
+Enviar imagem arrastando e soltando,envio,must,yes,yes,
+Enviar com botão escolher arquivo,envio,must,yes,yes,
+Colar imagem com Ctrl+V,envio,must,yes,yes,funciona na tela inicial e no editor
+Aceitar PNG JPG WebP GIF BMP,envio,must,yes,yes,
+Suporte a transparência (alpha 32 bits),envio,must,yes,yes,fundo transparente não vira forma; borda usa o alpha para sub-pixel
+Recortar ou reduzir imagem grande antes de processar,envio,should,yes,partial,reduz automaticamente para 4 MP; sem ferramenta de recorte
+Imagens de exemplo para testar,envio,could,yes,yes,4 exemplos feitos por nós
+Vetorizar imagens coloridas,motor,must,yes,yes,Motor Vetora próprio (TypeScript)
+Vetorizar preto e branco com traço muito limpo,motor,must,yes,yes,mesmo motor; sub-pixel + cantos vivos
+Rodar 100% no navegador sem enviar a imagem,motor,must,no,yes,diferencial: custo zero e privacidade
+Processar em segundo plano sem travar a tela,motor,must,yes,yes,Web Worker
+Limpar ruído de JPEG antes de vetorizar,motor,must,yes,yes,detecta ruído e aplica filtro que preserva bordas
+Ampliar imagem pequena antes de vetorizar,motor,should,yes,no,o sub-pixel já resolve bem imagens pequenas (ver parity.md)
+Detectar tipo da imagem automaticamente,motor,should,yes,partial,detecta ruído e antialiasing; tipo foto/logo ainda é escolha manual
+Detectar formas (círculo elipse retângulo triângulo estrela),motor,should,yes,partial,círculo exato e cantos vivos (retângulo/triângulo/estrela); elipse sai como curva
+Detectar simetria e formas repetidas,motor,could,yes,no,
+Precisão sub-pixel nas bordas,motor,could,yes,yes,usa o antialiasing do original
+Bordas vizinhas encaixadas sem fresta (vector graph),motor,should,yes,yes,mapa planar: cada fronteira é uma curva só (testado)
+Visualizador lado a lado ou com cortina,resultado,must,yes,yes,cortina arrastável
+Zoom e arrastar,resultado,must,yes,yes,rodinha + arrastar + botões + duplo clique para caber
+Alternar vista pixel / vetor / contornos,resultado,should,yes,yes,Comparar / Vetor / Original / Contornos
+Mostrar contagem de cores e formas e tamanho do arquivo,resultado,should,no,yes,cores formas nós tempo e tamanho do SVG
+Escolher tipo da imagem (auto clipart foto desenho),ajustes,must,yes,yes,
+Escolher finalidade (geral estampa bordado linha adesivo corte),ajustes,must,yes,yes,6 finalidades com ajustes e exportação próprios
+Número máximo de cores,ajustes,must,yes,yes,
+Fixar paleta de cores,ajustes,must,yes,yes,a paleta fica fixa ao juntar ou adicionar cores
+Mesclar tons parecidos,ajustes,must,yes,yes,
+Eliminar manchas pequenas (área mínima),ajustes,must,yes,yes,controlado por Detalhes
+Nível de detalhe,ajustes,must,yes,yes,
+Suavização,ajustes,must,yes,yes,
+Cantos (vivo redondo automático),ajustes,should,yes,yes,
+Cor de fundo personalizada,ajustes,could,yes,no,
+Reprocessar ao mudar ajuste com prévia rápida,ajustes,must,yes,yes,reprocessa sozinho em 0.2 a 1.5 s
+Remover fundo automaticamente,editor,must,yes,yes,cor que domina a borda
+Clicar em regiões para manter ou tirar do fundo,editor,should,yes,yes,Borracha
+Editar cor da paleta (hex RGB),editor,must,yes,yes,
+Juntar duas cores em uma,editor,must,yes,yes,reprocessa com paleta fixa; vai para a cor escolhida
+Apagar uma cor,editor,should,yes,yes,
+Adicionar cor que sumiu,editor,should,yes,yes,com conta-gotas no Chrome e Edge
+Recolorir juntar ou apagar uma região,editor,should,yes,yes,Pincel e Borracha
+Ajustar canto individual,editor,could,yes,no,
+Desfazer e refazer,editor,must,yes,yes,Ctrl+Z / Ctrl+Y
+Exportar SVG,exportar,must,yes,yes,
+Exportar DXF para corte e plotter,exportar,must,yes,yes,R12 em mm; validado no ezdxf sem erros
+Exportar PDF,exportar,should,yes,yes,validado no PyMuPDF
+Exportar EPS,exportar,should,yes,yes,
+Exportar PNG limpo em alta resolução,exportar,could,yes,yes,1x a 8x
+Predefinição edição / corte e gravação,exportar,must,yes,yes,
+Estilo preencher / contornar formas / contornar bordas,exportar,must,yes,yes,bordas sem linha dupla no corte
+Empilhamento recortes ou empilhado,exportar,should,yes,yes,
+Agrupar por cor (uma camada por cor),exportar,must,yes,yes,
+Agrupar por pai ou camada,exportar,could,yes,no,
+Tipos de curva permitidos,exportar,could,yes,no,saída sempre só com retas e cúbicas
+Tolerância do ajuste de linha,exportar,could,yes,partial,via Suavidade das curvas
+Preencher frestas entre cores,exportar,must,yes,yes,
+Tamanho e unidade (px mm cm pol),exportar,must,yes,yes,
+SVG compatível com Adobe,exportar,should,yes,yes,só retas e cúbicas sempre
+DXF linhas / linhas e arcos / splines,exportar,should,yes,partial,só linhas (o mais compatível)
+SVG pequeno (limite de KB),exportar,could,yes,no,
+Modelo de pintura por números,exportar,could,yes,no,
+Vetorizar várias imagens de uma vez e baixar zip,lote,should,yes,yes,
+Histórico de trabalhos no navegador,histórico,could,yes,no,
+Interface em português,geral,must,yes,yes,
+Funcionar no celular,geral,should,yes,yes,layout responsivo
+Funcionar offline depois de aberto (PWA),geral,could,no,yes,service worker + manifest
+Download grátis sem marca d'água e sem limite,geral,must,no,yes,
+Conta login e assinatura,conta,skip,yes,no,uso pessoal; exigiria servidor (custo)
+Pagamento e checkout,conta,skip,yes,no,uso pessoal; volta se virar produto (replica-backend)
+API pública para terceiros,api,skip,yes,no,exige servidor rodando
+IA proprietária treinada do Vectorizer.AI,motor,skip,yes,no,substituída pelo Motor Vetora (ver parity.md)
+Banco de imagens gerador de imagem Editor Mágico com IA,extras,skip,yes,no,outros produtos do DesignVerse
