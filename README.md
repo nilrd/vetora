@@ -7,10 +7,6 @@
   PNG, JPG ou WebP → SVG, PDF, EPS, DXF ou PNG. Grátis, sem marca d'água e sem enviar sua imagem para nenhum servidor.
 </p>
 
-<p align="center">
-  <a href="https://nilrd.github.io/vetora/"><b>Abrir o Vetora →</b></a>
-</p>
-
 ---
 
 ## O que ele faz
@@ -79,4 +75,4 @@ marca/        logo e nome
 
 ## Publicação
 
-Cada `push` na `main` roda os testes, compila e publica no GitHub Pages (`.github/workflows/deploy.yml`). Não há servidor nem custo de infraestrutura.
+Publicado no Vercel: cada `push` na `main` gera uma nova versão do site. Não há servidor nem custo de infraestrutura.
