@@ -142,10 +142,17 @@ export default function App() {
         <a className="logo" href="./" onClick={(e) => { e.preventDefault(); backHome() }} aria-label="Vetora, início">
           <img src="favicon.svg" alt="" /><b>vetora</b>
         </a>
-        <span className="tag">Vetorização de alta qualidade, direto no navegador</span>
+        {screen === 'edit' && img && <span className="file">{img.name} · {img.data.width}×{img.data.height}</span>}
         <span className="spacer" />
-        {screen === 'edit' && <label className="btn small"><IImage /> Nova imagem<input hidden type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) openFile(f, f.name); e.target.value = '' }} /></label>}
-        <span className="pill">100% grátis</span>
+        {screen === 'edit' ? (
+          <label className="btn small"><IImage /> Nova imagem<input hidden type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) openFile(f, f.name); e.target.value = '' }} /></label>
+        ) : (
+          <nav>
+            <button onClick={() => { setBatchFiles([]); setScreen('batch') }}>Lote</button>
+            {screen === 'home' && <a className="hide-sm" href="#como-funciona">Como funciona</a>}
+            <a className="hide-sm" href="https://github.com/nilrd/vetora">GitHub</a>
+          </nav>
+        )}
       </header>
 
       {screen === 'home' && <Home onFile={openFile} onBatch={(f) => { setBatchFiles(f); setScreen('batch') }} error={loadErr} />}
@@ -168,13 +175,14 @@ export default function App() {
                 <button aria-pressed={tool === 'paint'} onClick={() => { setTool(tool === 'paint' ? 'none' : 'paint'); if (mode === 'original') setMode('vector') }} title="Clique numa região para pintar com a cor escolhida">Pincel</button>
                 <input type="color" value={paintHex} onChange={(e) => { setPaintHex(e.target.value); setTool('paint') }} aria-label="Cor do pincel" style={{ width: 28, height: 26, border: 0, padding: 0, background: 'none', cursor: 'pointer' }} />
               </span>
-              <button className="btn small ghost" onClick={undo} disabled={!undoStack.current.length} aria-label="Desfazer" title="Desfazer (Ctrl+Z)"><IUndo /></button>
-              <button className="btn small ghost" onClick={redo} disabled={!redoStack.current.length} aria-label="Refazer" title="Refazer (Ctrl+Y)"><IRedo /></button>
+              <span className="sep" />
+              <button className="btn small ghost icon-only" onClick={undo} disabled={!undoStack.current.length} aria-label="Desfazer" title="Desfazer (Ctrl+Z)"><IUndo /></button>
+              <button className="btn small ghost icon-only" onClick={redo} disabled={!redoStack.current.length} aria-label="Refazer" title="Refazer (Ctrl+Y)"><IRedo /></button>
               <span className="spacer" />
-              <button className="btn small ghost" onClick={() => setZoomCmd({ kind: 'out', n: Date.now() })} aria-label="Diminuir zoom"><IMinus /></button>
+              <button className="btn small ghost icon-only" onClick={() => setZoomCmd({ kind: 'out', n: Date.now() })} aria-label="Diminuir zoom"><IMinus /></button>
               <span className="zoom-label">{Math.round(zoom * 100)}%</span>
-              <button className="btn small ghost" onClick={() => setZoomCmd({ kind: 'in', n: Date.now() })} aria-label="Aumentar zoom"><IPlus /></button>
-              <button className="btn small ghost" onClick={() => setZoomCmd({ kind: 'fit', n: Date.now() })} aria-label="Caber na tela"><IFit /></button>
+              <button className="btn small ghost icon-only" onClick={() => setZoomCmd({ kind: 'in', n: Date.now() })} aria-label="Aumentar zoom"><IPlus /></button>
+              <button className="btn small ghost icon-only" onClick={() => setZoomCmd({ kind: 'fit', n: Date.now() })} aria-label="Caber na tela"><IFit /></button>
             </div>
             <Viewer
               imgUrl={img.url} width={img.data.width} height={img.data.height}

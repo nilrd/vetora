@@ -63,7 +63,7 @@ export function Batch({ initial, settings, exp, onBack }: Props) {
         <select value={format} onChange={(e) => setFormat(e.target.value as Format)} aria-label="Formato">
           {['svg', 'pdf', 'eps', 'dxf', 'png'].map((f) => <option key={f} value={f}>{f.toUpperCase()}</option>)}
         </select>
-        <button className="btn primary" disabled={!items.length || running} onClick={run}>{running ? 'Vetorizando…' : 'Vetorizar tudo'}</button>
+        <button className="btn ink" disabled={!items.length || running} onClick={run}>{running ? 'Vetorizando…' : 'Vetorizar tudo'}</button>
         <button className="btn" disabled={!done || running} onClick={zip}><IDownload /> Baixar tudo (.zip)</button>
         <span style={{ color: 'var(--text-3)', fontSize: 13 }}>{done} de {items.length} prontas</span>
       </div>

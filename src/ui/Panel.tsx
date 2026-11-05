@@ -193,7 +193,7 @@ export function Panel(p: Props) {
       </section>
 
       <div className="dl">
-        <button className="btn primary big" onClick={p.onDownload} disabled={!p.result || p.downloading}>
+        <button className="btn ink big" onClick={p.onDownload} disabled={!p.result || p.downloading}>
           <IDownload /> {p.downloading ? 'Gerando…' : `Baixar ${p.exp.format.toUpperCase()}`}
         </button>
         <div className="note">{p.sizeHint || 'Grátis, sem marca d’água e sem limite.'}</div>
