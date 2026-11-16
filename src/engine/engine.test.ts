@@ -110,6 +110,25 @@ describe('motor', () => {
     expect(center(buildSvg(r2, { ...defaultExport }, white))).toEqual([255, 0, 0])
   })
 
+  it('triângulo com borda tremida sai com retas (sem ondas)', () => {
+    // logo de baixa resolução: a borda tem "mordidas" de ~1,5 px
+    const w = 300, a = new Uint8Array(w * w * 4)
+    const tri = [[150, 30], [270, 260], [30, 260]]
+    const side = (x: number, y: number, [ax, ay]: number[], [bx, by]: number[]) =>
+      ((bx - ax) * (y - ay) - (by - ay) * (x - ax)) / Math.hypot(bx - ax, by - ay)
+    for (let y = 0; y < w; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4
+      const wob = 1.5 * Math.sin(x * 0.55) * Math.cos(y * 0.45)
+      const inside = [0, 1, 2].every((k) => side(x, y, tri[k], tri[(k + 1) % 3]) > wob)
+      const v = inside ? 0 : 255
+      a[i] = a[i + 1] = a[i + 2] = v; a[i + 3] = 255
+    }
+    const r = vectorize({ rgba: a, width: w, height: w, settings: { background: 'remove' } })
+    expect(r.shapes.length).toBe(1)
+    const cmds = parseD(r.shapes[0].d)
+    expect(cmds.filter((c) => c.c === 'L' || c.c === 'C').length).toBeLessThanOrEqual(4)
+  })
+
   it('juntar cores com paleta fixa respeita a cor escolhida', () => {
     const r0 = vectorize({ rgba: synth(), width: 64, height: 64 })
     const blue = r0.palette.findIndex((c) => c[2] > 180 && c[0] < 60)

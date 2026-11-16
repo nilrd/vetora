@@ -9,6 +9,8 @@ export interface FitOptions {
   smooth: number
   /** tenta formas inteiras (círculo) */
   primitives: boolean
+  /** px internos por px da imagem original (ampliação interna) */
+  scale?: number
 }
 
 type P = { x: number; y: number }
@@ -37,12 +39,13 @@ function taubin(p: P[], closed: boolean, locked: Uint8Array, iters: number, lamb
     }
 }
 
-function findCorners(p: P[], closed: boolean, angleDeg: number): number[] {
+function findCorners(p: P[], closed: boolean, angleDeg: number, scale = 1): number[] {
   const n = p.length
   const out: number[] = []
-  if (n < 5) return out
-  const k = 2
-  const K2 = 5
+  // escala do teste em px da imagem original (ampliada 2x por dentro: o dobro de pontos)
+  const k = Math.round(2 * Math.sqrt(scale))
+  const K2 = Math.round(5 * Math.sqrt(scale))
+  if (n < 2 * k + 1) return out
   const thr = (angleDeg * Math.PI) / 180
   const angAt = (i: number, kk: number) => {
     if (!closed && (i < kk || i >= n - kk)) return -1
@@ -94,19 +97,20 @@ function fitLine(pts: P[]): { cx: number; cy: number; dx: number; dy: number; rm
 }
 
 /** Em cada canto, coloca o vértice na interseção das duas retas vizinhas (canto vivo de verdade). */
-function sharpenCorner(p: P[], i: number, closed: boolean): P | null {
+function sharpenCorner(p: P[], i: number, closed: boolean, scale = 1): P | null {
   const n = p.length
   const get = (j: number) => (closed ? p[(j + n) % n] : p[Math.max(0, Math.min(n - 1, j))])
   const before: P[] = [], after: P[] = []
-  for (let j = 2; j <= 5; j++) { before.push(get(i - j)); after.push(get(i + j)) }
-  if (!closed && (i - 5 < 0 || i + 5 >= n)) return null
+  const j0 = Math.round(2 * scale), j1 = Math.round(5 * scale)
+  for (let j = j0; j <= j1; j++) { before.push(get(i - j)); after.push(get(i + j)) }
+  if (!closed && (i - j1 < 0 || i + j1 >= n)) return null
   const a = fitLine(before), b = fitLine(after)
-  if (!a || !b || a.rms > 0.35 || b.rms > 0.35) return null
+  if (!a || !b || a.rms > 0.35 * scale || b.rms > 0.35 * scale) return null
   const den = a.dx * b.dy - a.dy * b.dx
   if (Math.abs(den) < 0.2) return null
   const t = ((b.cx - a.cx) * b.dy - (b.cy - a.cy) * b.dx) / den
   const q = { x: a.cx + a.dx * t, y: a.cy + a.dy * t }
-  if (Math.hypot(q.x - p[i].x, q.y - p[i].y) > 1.6) return null
+  if (Math.hypot(q.x - p[i].x, q.y - p[i].y) > 1.6 * scale) return null
   return q
 }
 
@@ -227,12 +231,173 @@ function tangentAt(p: P[], i: number, dir: 1 | -1, last: number, first: number) 
   return norm(sub(p[i + dir * k], p[i]))
 }
 
-function fitRun(p: P[], first: number, last: number, err: number, out: Seg[]) {
+function fitRun(p: P[], first: number, last: number, err: number, out: Seg[], scale = 0) {
   if (last - first < 1) return
   if (last - first === 1) { out.push({ t: 'L', x: p[last].x, y: p[last].y }); return }
+  // trecho entre dois cantos que é uma reta tremida: uma reta só
+  if (scale > 0 && straightChain(p.slice(first, last + 1), scale)) { out.push({ t: 'L', x: p[last].x, y: p[last].y }); return }
   const t1 = tangentAt(p, first, 1, last, first)
   const t2 = tangentAt(p, last, -1, last, first)
   fitCubic(p, first, last, t1, t2, err, out)
+}
+
+// ---------- Polígono com borda tremida ----------
+
+/** Trecho aberto quase reto: longo, perto da corda e sem barriga (arco) em nenhum quarto. */
+function straightChain(p: P[], scale: number): boolean {
+  const n = p.length
+  if (n < 16) return false
+  const A = p[0], B = p[n - 1]
+  const L = Math.hypot(B.x - A.x, B.y - A.y)
+  if (L < 14 * scale) return false
+  const res = p.map((q) => ((q.x - A.x) * (B.y - A.y) - (q.y - A.y) * (B.x - A.x)) / L)
+  let md = 0
+  for (const r of res) md = Math.max(md, Math.abs(r))
+  if (md > 1.3 * scale) return false
+  const qn = Math.floor(n / 4)
+  for (let s0 = 0; s0 + qn <= n; s0 += qn) {
+    let sm = 0
+    for (let i = s0; i < s0 + qn; i++) sm += res[i]
+    if (Math.abs(sm / qn) > 0.35 * scale) return false
+  }
+  return true
+}
+
+/** Douglas-Peucker num trecho aberto: índices dos vértices mantidos. */
+function dp(p: P[], a: number, b: number, eps: number, out: number[]) {
+  const A = p[a], B = p[b]
+  const L = Math.hypot(B.x - A.x, B.y - A.y) || 1e-9
+  let md = -1, mi = -1
+  for (let i = a + 1; i < b; i++) {
+    const d = Math.abs((p[i].x - A.x) * (B.y - A.y) - (p[i].y - A.y) * (B.x - A.x)) / L
+    if (d > md) { md = d; mi = i }
+  }
+  if (md > eps && mi > 0) { dp(p, a, mi, eps, out); out.push(mi); dp(p, mi, b, eps, out) }
+}
+
+/**
+ * Contorno que é um polígono de poucas retas longas, só que com a borda tremida
+ * (imagem pequena ampliada, JPEG, print de tela). Sem isso cada "mordida" vira curva e
+ * a reta sai ondulada. Exige: poucos lados, lados longos, cantos de verdade (giro grande)
+ * e pontos dos dois lados de cada reta (num arco eles ficam todos de um lado só).
+ */
+function noisyPolygon(p0: P[], scale: number): Curve | null {
+  const n = p0.length
+  if (n < 30) return null
+  // começa no ponto mais distante do primeiro (um canto provável)
+  let far = 0, fd = -1
+  for (let i = 0; i < n; i++) { const d = (p0[i].x - p0[0].x) ** 2 + (p0[i].y - p0[0].y) ** 2; if (d > fd) { fd = d; far = i } }
+  const p = [...p0.slice(far), ...p0.slice(0, far), p0[far]]
+  // cópia alisada (média móvel de ~5 px) só para achar os cantos: as mordidas somem, as retas ficam
+  const Wm = Math.max(3, Math.round(5 * scale))
+  const sm: P[] = []
+  for (let i = 0; i <= n; i++) {
+    let sx = 0, sy = 0
+    for (let j = -Wm; j <= Wm; j++) { const q = p[(((i + j) % n) + n) % n]; sx += q.x; sy += q.y }
+    sm.push({ x: sx / (2 * Wm + 1), y: sy / (2 * Wm + 1) })
+  }
+  const eps = 2.2 * scale
+  // laço fechado: divide no ponto mais longe do início e simplifica as duas metades
+  let mid = 0, md2 = -1
+  for (let i = 1; i < n; i++) { const d = (sm[i].x - sm[0].x) ** 2 + (sm[i].y - sm[0].y) ** 2; if (d > md2) { md2 = d; mid = i } }
+  const idx = [0]
+  dp(sm, 0, mid, eps, idx)
+  idx.push(mid)
+  dp(sm, mid, n, eps, idx)
+  idx.push(n)
+  // o ponto inicial pode não ser canto: tira se o giro ali for pequeno
+  const m0 = idx.length - 1
+  if (m0 < 3 || m0 > 24) return null
+  let verts = idx.slice(0, -1)
+  const turn = (a: P, b: P, c: P) => {
+    const ux = b.x - a.x, uy = b.y - a.y, vx = c.x - b.x, vy = c.y - b.y
+    const lu = Math.hypot(ux, uy), lv = Math.hypot(vx, vy)
+    return Math.acos(Math.max(-1, Math.min(1, (ux * vx + uy * vy) / (lu * lv || 1)))) * 180 / Math.PI
+  }
+  const P0 = (k: number) => sm[verts[(k + verts.length) % verts.length]]
+  verts = verts.filter((_, k) => turn(P0(k - 1), P0(k), P0(k + 1)) >= 30)
+  // lado curtinho = canto arredondado ou mordido: some, e o canto vira a interseção das retas vizinhas
+  for (let guard = 0; guard < 20 && verts.length > 3; guard++) {
+    let ks = -1, best = Infinity
+    for (let k = 0; k < verts.length; k++) {
+      const A = P0(k), B = P0(k + 1), L = Math.hypot(B.x - A.x, B.y - A.y)
+      if (L < 12 * scale && L < best) { best = L; ks = k }
+    }
+    if (ks < 0) break
+    // tira o vértice cujo giro é menor (o outro vira o canto)
+    const k2 = (ks + 1) % verts.length
+    const drop = turn(P0(ks - 1), P0(ks), P0(ks + 1)) < turn(P0(k2 - 1), P0(k2), P0(k2 + 1)) ? ks : k2
+    verts.splice(drop, 1)
+  }
+  const m = verts.length
+  if (m < 3 || m > 10) return null
+  // cada lado: longo, reto (pontos dos dois lados da reta) e com tremor pequeno
+  const lines: { cx: number; cy: number; dx: number; dy: number }[] = []
+  for (let k = 0; k < m; k++) {
+    const a = verts[k], b = k + 1 < m ? verts[k + 1] : verts[0] + n
+    const A = p[a % n], B = p[b % n]
+    const L = Math.hypot(B.x - A.x, B.y - A.y)
+    if (L < 22 * scale) return null
+    // ignora as pontas (perto dos cantos a borda arredonda)
+    const cut = Math.max(2, Math.floor((b - a) * 0.15))
+    const seg: P[] = []
+    for (let i = a + cut; i <= b - cut; i++) seg.push(p[i % n])
+    const f = fitLine(seg)
+    if (!f || f.rms > 0.9 * scale) return null
+    // curva disfarçada (arco ou "S"): em algum quarto do lado os pontos ficam, em média,
+    // longe da reta. Tremor de verdade se anula dentro de cada quarto.
+    const res = seg.map((q) => (q.x - f.cx) * -f.dy + (q.y - f.cy) * f.dx)
+    const qn = Math.max(1, Math.floor(res.length / 4))
+    for (let s0 = 0; s0 + qn <= res.length; s0 += qn) {
+      let sm = 0
+      for (let i = s0; i < s0 + qn; i++) sm += res[i]
+      if (Math.abs(sm / qn) > 0.35 * scale) return null
+    }
+    lines.push(f)
+  }
+  // vértices: interseção das retas vizinhas
+  const pts: P[] = []
+  for (let k = 0; k < m; k++) {
+    const a = lines[(k - 1 + m) % m], b = lines[k]
+    const den = a.dx * b.dy - a.dy * b.dx
+    const orig = p[verts[k]]
+    let q = orig
+    if (Math.abs(den) > 0.05) {
+      const t = ((b.cx - a.cx) * b.dy - (b.cy - a.cy) * b.dx) / den
+      const c = { x: a.cx + a.dx * t, y: a.cy + a.dy * t }
+      if (Math.hypot(c.x - orig.x, c.y - orig.y) < 6 * scale) q = c
+    }
+    pts.push(q)
+  }
+  // conferência final: nenhum ponto da borda pode ficar longe do polígono
+  // (canto arredondado de verdade, ou detalhe que o polígono apagou, recusa)
+  // perto de canto agudo (< 75°) aceita mais: o borrão da imagem arredonda muito a ponta aguda
+  const acute = pts.map((B, k) => {
+    const A = pts[(k - 1 + m) % m], C = pts[(k + 1) % m]
+    const ux = A.x - B.x, uy = A.y - B.y, vx = C.x - B.x, vy = C.y - B.y
+    const cos = (ux * vx + uy * vy) / (Math.hypot(ux, uy) * Math.hypot(vx, vy) || 1)
+    // ponta de triângulo grande (não a ponta redonda de um traço fino)
+    const long = Math.hypot(ux, uy) > 30 * scale && Math.hypot(vx, vy) > 30 * scale
+    return long && Math.acos(Math.max(-1, Math.min(1, cos))) < (75 * Math.PI) / 180
+  })
+  const lim = (2 * scale) ** 2, limTip = (4.5 * scale) ** 2, near2 = (10 * scale) ** 2
+  for (const q of p0) {
+    let best = Infinity
+    for (let k = 0; k < m; k++) {
+      const A = pts[k], B = pts[(k + 1) % m]
+      const vx = B.x - A.x, vy = B.y - A.y, L2 = vx * vx + vy * vy || 1e-9
+      const tt = Math.max(0, Math.min(1, ((q.x - A.x) * vx + (q.y - A.y) * vy) / L2))
+      const d = (A.x + vx * tt - q.x) ** 2 + (A.y + vy * tt - q.y) ** 2
+      if (d < best) best = d
+    }
+    if (best > lim) {
+      const tip = pts.some((v, k) => acute[k] && (v.x - q.x) ** 2 + (v.y - q.y) ** 2 < near2)
+      if (!tip || best > limTip) return null
+    }
+  }
+  const segs: Seg[] = pts.slice(1).map((q) => ({ t: 'L' as const, x: q.x, y: q.y }))
+  segs.push({ t: 'L', x: pts[0].x, y: pts[0].y })
+  return { start: pts[0], segs, closed: true }
 }
 
 // ---------- Círculo ----------
@@ -299,13 +464,34 @@ export function fitChain(raw: Float64Array, closed: boolean, opt: FitOptions, ha
     }
   }
 
-  const corners = findCorners(p, closed, opt.cornerAngle)
+  // trecho aberto (entre dois encontros de cores) que é uma reta tremida: vira uma reta só
+  if (!closed && opt.primitives && straightChain(p, opt.scale || 1)) {
+    // as pontas são vértices da grade (encontro de cores); a reta de verdade passa pelos pontos
+    // do meio, medidos com precisão sub-pixel. Liga as pontas à reta ajustada.
+    const f = fitLine(p.slice(2, n - 2))
+    if (f) {
+      const proj = (q: P) => { const t = (q.x - f.cx) * f.dx + (q.y - f.cy) * f.dy; return { x: f.cx + f.dx * t, y: f.cy + f.dy * t } }
+      const a = proj(p[0]), b = proj(p[n - 1])
+      const sc = opt.scale || 1
+      if (Math.hypot(a.x - p[0].x, a.y - p[0].y) < 1.5 * sc && Math.hypot(b.x - p[n - 1].x, b.y - p[n - 1].y) < 1.5 * sc) {
+        return { start: p[0], segs: [{ t: 'L', x: a.x, y: a.y }, { t: 'L', x: b.x, y: b.y }, { t: 'L', x: p[n - 1].x, y: p[n - 1].y }], closed }
+      }
+    }
+    return { start: p[0], segs: [{ t: 'L', x: p[n - 1].x, y: p[n - 1].y }], closed }
+  }
+  // polígono de retas com borda tremida (logo de baixa resolução, "mordido")?
+  if (closed && opt.primitives) {
+    const poly = noisyPolygon(p, opt.scale || 1)
+    if (poly) return poly
+  }
+
+  const corners = findCorners(p, closed, opt.cornerAngle, opt.scale || 1)
   const locked = new Uint8Array(n)
   if (!closed) { locked[0] = 1; locked[n - 1] = 1 }
   for (const c of corners) locked[c] = 1
   // cantos vivos: vértice na interseção das retas
   for (const c of corners) {
-    const q = sharpenCorner(p, c, closed)
+    const q = sharpenCorner(p, c, closed, opt.scale || 1)
     if (q) p[c] = q
   }
   // suavização: forte quando a imagem não tem antialiasing (escadinha), leve quando tem
@@ -329,11 +515,11 @@ export function fitChain(raw: Float64Array, closed: boolean, opt: FitOptions, ha
     const q = [...p.slice(s), ...p.slice(0, s), p[s]]
     const cs = corners.map((c) => (c - s + n) % n).sort((a, b) => a - b)
     cs.push(n)
-    for (let i = 0; i < cs.length - 1; i++) fitRun(q, cs[i], cs[i + 1], opt.tolerance, segs)
+    for (let i = 0; i < cs.length - 1; i++) fitRun(q, cs[i], cs[i + 1], opt.tolerance, segs, opt.primitives ? opt.scale || 1 : 0)
     return { start: q[0], segs, closed }
   }
   const cs = [0, ...corners.filter((c) => c > 0 && c < n - 1), n - 1]
-  for (let i = 0; i < cs.length - 1; i++) fitRun(p, cs[i], cs[i + 1], opt.tolerance, segs)
+  for (let i = 0; i < cs.length - 1; i++) fitRun(p, cs[i], cs[i + 1], opt.tolerance, segs, opt.primitives ? opt.scale || 1 : 0)
   return { start: p[0], segs, closed }
 }
 

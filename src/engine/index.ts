@@ -109,7 +109,7 @@ export function vectorize(inp: EngineInput): VectorResult {
     if (i % 500 === 0) prog('curvas', 0.6 + (i / tr.chains.length) * 0.35)
     const pts = chainPoints(ch, seg, rgba, tr.H, hasAA)
     // com ruído (JPEG) a borda medida treme: suaviza mais
-    return fitChain(pts, ch.closed, { tolerance, cornerAngle, smooth: noisy ? 1.5 : hasAA ? 0.5 : 1, primitives: true }, hasAA)
+    return fitChain(pts, ch.closed, { tolerance, cornerAngle, smooth: noisy ? 1.5 : hasAA ? 0.5 : 1, primitives: true, scale: K }, hasAA)
   })
 
   // fundo a remover: a cor que mais aparece na borda da imagem
