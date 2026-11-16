@@ -102,7 +102,12 @@ describe('motor', () => {
       return [img.pixels[o], img.pixels[o + 1], img.pixels[o + 2]]
     }
     const r = vectorize({ rgba: a, width: w, height: w, settings: { background: 'remove' } })
-    expect(center(toSvg(r))).toEqual([255, 0, 0]) // o fundo vermelho aparece pelo furo
+    // só o branco de fora é fundo; o branco do miolo é parte do desenho e fica
+    expect(center(toSvg(r))).toEqual([255, 255, 255])
+    expect(r.shapes.some((s) => s.color[0] > 200)).toBe(true)
+    const o = (2 * 64 + 2) * 4
+    const img = new Resvg(toSvg(r), { background: '#ff0000' }).render()
+    expect([img.pixels[o], img.pixels[o + 1], img.pixels[o + 2]]).toEqual([255, 0, 0]) // canto: fundo removido
     // apagar a cor branca (sem remover fundo) também vaza o furo na exportação
     const r2 = vectorize({ rgba: a, width: w, height: w })
     const white = new Set(r2.shapes.filter((s) => s.color[0] > 200).map((s) => s.id))

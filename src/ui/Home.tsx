@@ -63,7 +63,7 @@ export function Home({ onFile, onBatch, error }: Props) {
           <h3>Ficha técnica</h3>
           <dl className="rows">
             <div><dt>formatos</dt><dd>SVG, PDF, EPS, DXF (R12, em mm) e PNG até 8x</dd></div>
-            <div><dt>finalidades</dt><dd>Estampa com camadas por cor, bordado, adesivo, corte a laser e desenho a traço</dd></div>
+            <div><dt>finalidades</dt><dd>Estampa e DTF com camadas por cor, bordado, adesivo, corte a laser e desenho a traço</dd></div>
             <div><dt>bordas</dt><dd>Cores vizinhas dividem a mesma curva: sem fresta, sem sobreposição. Posição sub-pixel.</dd></div>
             <div><dt>edição</dt><dd>Trocar, juntar, apagar e adicionar cores; borracha e pincel por região</dd></div>
             <div><dt>privacidade</dt><dd>Tudo roda no seu navegador. Funciona até sem internet.</dd></div>

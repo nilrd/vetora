@@ -11,6 +11,8 @@ export interface SegmentInput {
   minArea: number // px
   photo: boolean
   noisy?: boolean
+  /** bordas borradas (imagem ampliada ou muito comprimida): limpa lascas de cor que vazou */
+  blurry?: boolean
   mergeMap?: Record<number, number>
   /** a imagem foi ampliada por dentro (2 = 2x): larguras medidas em px crescem junto */
   scale?: number
@@ -174,6 +176,84 @@ function pickPalette(lab: Float32Array, alpha: Uint8Array, w: number, h: number,
  * Aqui procuramos pixels que nenhuma cor (nem mistura de duas) explica bem e criamos a cor que falta,
  * puxando para os pixels mais "puros" (os mais distantes do fundo).
  */
+/**
+ * Imagem borrada ou JPEG: a transição entre duas cores fica larga e vira cor "lisa",
+ * e entra na paleta um tom que é só a mistura das duas (laranja + preto = marrom).
+ * Tira da paleta toda cor que fica em cima do segmento entre outras duas e é bem
+ * menos frequente que elas. Os pixels dela voltam a ser explicados como antialiasing.
+ */
+function purgeMixtures(pal: Float32Array, lab: Float32Array, alpha: Uint8Array, flat: Uint8Array, n: number, inp: SegmentInput, w: number, h: number): Float32Array {
+  if (inp.palette?.length || inp.photo) return pal
+  let cur = pal
+  const near = new Int16Array(n)
+  for (let round = 0; round < 4; round++) {
+    const K = cur.length / 3
+    if (K < 3) return cur
+    // área de cada cor entre os pixels lisos
+    const area = new Float64Array(K)
+    near.fill(-1)
+    for (let i = 0; i < n; i++) {
+      if (!flat[i] || alpha[i] < 200) continue
+      let b = 0, bd = Infinity
+      for (let k = 0; k < K; k++) { const d = dLab2(lab, i * 3, cur, k * 3); if (d < bd) { bd = d; b = k } }
+      area[b]++
+      near[i] = b
+    }
+    // mistura de verdade fica espremida entre os pais: quase nenhum pixel dela está longe dos dois.
+    // Uma cor legítima (mesmo que caia na reta entre duas outras) tem miolo próprio.
+    const R = 3
+    const deepFrac = (k: number, u: number, v: number) => {
+      let tot = 0, deep = 0
+      for (let y = 0; y < h; y++)
+        for (let x = 0; x < w; x++) {
+          const i = y * w + x
+          if (near[i] !== k) continue
+          tot++
+          let seen = false
+          for (let dy = -R; dy <= R && !seen; dy++) {
+            const yy = y + dy
+            if (yy < 0 || yy >= h) continue
+            for (let dx = -R; dx <= R; dx++) {
+              const xx = x + dx
+              if (xx < 0 || xx >= w) continue
+              const nn = near[yy * w + xx]
+              if (nn === u || nn === v) { seen = true; break }
+            }
+          }
+          if (!seen) deep++
+        }
+      return tot ? deep / tot : 1
+    }
+    let total = 0
+    for (let k = 0; k < K; k++) total += area[k]
+    let drop = -1, dropScore = Infinity
+    for (let k = 0; k < K; k++) {
+      if (area[k] > total * 0.04) continue
+      for (let u = 0; u < K; u++) {
+        if (u === k || area[u] < area[k] * 3) continue
+        for (let v = u + 1; v < K; v++) {
+          if (v === k || area[v] < area[k] * 3) continue
+          let num = 0, den = 0
+          for (let c = 0; c < 3; c++) { const d = cur[u * 3 + c] - cur[v * 3 + c]; num += (cur[k * 3 + c] - cur[v * 3 + c]) * d; den += d * d }
+          if (den < 20 * 20) continue // pais parecidos demais
+          const tt = num / den
+          if (tt < 0.12 || tt > 0.88) continue
+          let e = 0
+          for (let c = 0; c < 3; c++) e += (cur[k * 3 + c] - (cur[v * 3 + c] + tt * (cur[u * 3 + c] - cur[v * 3 + c]))) ** 2
+          const lim = inp.noisy ? 8 : 5
+          if (e < lim * lim && e < dropScore && deepFrac(k, u, v) < 0.1) { dropScore = e; drop = k }
+        }
+      }
+    }
+    if (drop < 0) return cur
+    const next = new Float32Array((K - 1) * 3)
+    let o = 0
+    for (let k = 0; k < K; k++) if (k !== drop) { next.set(cur.subarray(k * 3, k * 3 + 3), o); o += 3 }
+    cur = next
+  }
+  return cur
+}
+
 function addThinColors(pal: Float32Array, lab: Float32Array, alpha: Uint8Array, flat: Uint8Array, n: number, inp: SegmentInput): Float32Array {
   let cur = pal
   const thr = inp.noisy ? 22 : 14
@@ -297,9 +377,11 @@ export function segment(inp: SegmentInput): Segmentation {
     const a = analyze(o.rgba, o.w, o.h, FT0)
     pal = pickPalette(a.lab, a.alpha, o.w, o.h, a.flat, oi)
     if (!inp.palette?.length && !inp.photo) pal = addThinColors(pal, a.lab, a.alpha, a.flat, o.w * o.h, oi)
+    pal = purgeMixtures(pal, a.lab, a.alpha, a.flat, o.w * o.h, oi, o.w, o.h)
   } else {
     pal = pickPalette(lab, alpha, w, h, flat, inp)
     if (!inp.palette?.length && !inp.photo) pal = addThinColors(pal, lab, alpha, flat, n, inp)
+    pal = purgeMixtures(pal, lab, alpha, flat, n, inp, w, h)
   }
   const K = pal.length / 3
   const T = K // rótulo transparente
@@ -428,7 +510,7 @@ export function segment(inp: SegmentInput): Segmentation {
   components(seg)
   mergeSpecks(seg, inp.minArea)
   const sc = inp.scale || 1
-  removeFringes(seg, inp.noisy ? 12 : 6, inp.noisy ? 22 : 0, sc)
+  removeFringes(seg, inp.noisy ? 12 : 6, inp.noisy ? 22 : 0, sc, !!inp.blurry)
   if (inp.noisy) unifyThin(seg, 40, sc)
   // a limpeza das franjas pode deixar pedacinhos soltos: absorve de novo
   if (sc > 1) mergeSpecks(seg, inp.minArea)
@@ -496,7 +578,7 @@ function unifyThin(s: Segmentation, maxDE: number, scale = 1) {
  * Franjas: regiões finas cuja cor é só a mistura das duas vizinhas (antialiasing ou chiado do JPEG).
  * Cada pixel da franja volta para a vizinha mais parecida com ele.
  */
-function removeFringes(s: Segmentation, maxResid: number, nearDE = 0, scale = 1) {
+function removeFringes(s: Segmentation, maxResid: number, nearDE = 0, scale = 1, blurry = false) {
   for (let round = 0; round < 2; round++) {
     const { w, h, comp, compLabel, compArea, lab, label } = s
     const T = s.transparent
@@ -519,20 +601,50 @@ function removeFringes(s: Segmentation, maxResid: number, nearDE = 0, scale = 1)
         if (y < h - 1) chk(i + w)
       }
     const palLab = s.palette.map((p) => { const o = new Float32Array(3); rgbToLab(p[0], p[1], p[2], o, 0); return o })
-    const reassign = new Map<number, [number, number]>() // comp -> [A, B] (labels)
+    const labelArea = new Float64Array(s.palette.length + 1)
+    for (let c = 0; c < s.nComp; c++) labelArea[compLabel[c]] += compArea[c]
+    const n = w * h
+    const reassign = new Map<number, number[]>() // comp -> rótulos candidatos (cada pixel vai para o mais próximo)
     for (let c = 0; c < s.nComp; c++) {
       const L = compLabel[c]
       if (L === T || !per[c]) continue
-      const thin = compArea[c] / per[c] < 0.9 * scale // largura média < ~2 px (da imagem original)
-      if (!thin) continue
+      // largura média < ~2 px (da imagem original); borrada, a franja chega a ~3 px, então
+      // para a mistura exata de duas vizinhas o limite é mais folgado
+      const width = compArea[c] / per[c] / scale
+      if (width >= 2) continue
+      const thin = width < 0.9
       const m = nb.get(c)
       if (!m) continue
-      const top = [...m.entries()].filter(([d]) => compLabel[d] !== T && compLabel[d] !== L).sort((a, b) => b[1] - a[1]).slice(0, 3)
-      let best: [number, number] | null = null, bestE = maxResid * maxResid
+      // vizinhas por cor (somando as regiões), da mais encostada para a menos
+      const byLabel = new Map<number, number>()
+      for (const [d, k] of m) { const Ld = compLabel[d]; if (Ld !== T && Ld !== L) byLabel.set(Ld, (byLabel.get(Ld) || 0) + k) }
+      const top = [...byLabel.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([Ld, k]) => [Ld, k] as [number, number])
       const cl = palLab[L]
+      // lasca encostada quase só numa cor (≥85% da borda), de cor "entre" essa vizinha e outra da
+      // paleta: é sobra de borrão que vazou, vai para a vizinha
+      // (só em imagem com chiado ou borrão: numa imagem limpa uma lasca fina é desenho)
+      if (blurry && top.length && top[0][1] >= per[c] * 0.85 && width < 1.4 && labelArea[L] < n * 0.015) {
+        const A = top[0][0], a = palLab[A]
+        let ok = false
+        for (let Bc = 0; Bc < s.palette.length && !ok; Bc++) {
+          if (Bc === A || Bc === L) continue
+          const b = palLab[Bc]
+          let num = 0, den = 0
+          for (let k = 0; k < 3; k++) { const d = b[k] - a[k]; num += (cl[k] - a[k]) * d; den += d * d }
+          if (den < 1e-6) continue
+          const tt = num / den
+          if (tt < 0.05 || tt > 0.95) continue
+          let e = 0
+          for (let k = 0; k < 3; k++) e += (cl[k] - (a[k] + tt * (b[k] - a[k]))) ** 2
+          if (e < (maxResid * 1.5) ** 2) ok = true
+        }
+        if (ok) { reassign.set(c, [A]); continue }
+      }
+      if (width >= 1.4 && top.length < 3) continue
+      let best: [number, number] | null = null, bestE = maxResid * maxResid
       for (let u = 0; u < top.length; u++)
         for (let v = u + 1; v < top.length; v++) {
-          const A = compLabel[top[u][0]], B = compLabel[top[v][0]]
+          const A = top[u][0], B = top[v][0]
           if (A === B) continue
           const a = palLab[A], b = palLab[B]
           let num = 0, den = 0
@@ -544,13 +656,31 @@ function removeFringes(s: Segmentation, maxResid: number, nearDE = 0, scale = 1)
           if (e < bestE) { bestE = e; best = [A, B] }
         }
       if (best) { reassign.set(c, best); continue }
+      // mistura de três vizinhas (canto onde três cores se encontram, borrado)
+      if (top.length === 3) {
+        const [A, B, C] = top.map(([Ld]) => Ld)
+        if (A !== B && B !== C && A !== C) {
+          const a = palLab[A], b = palLab[B], cc = palLab[C]
+          // coordenadas de cl no plano (a, b, c): mínimos quadrados 2x2
+          const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [cc[0] - a[0], cc[1] - a[1], cc[2] - a[2]], q = [cl[0] - a[0], cl[1] - a[1], cl[2] - a[2]]
+          const uu = u[0] * u[0] + u[1] * u[1] + u[2] * u[2], vv = v[0] * v[0] + v[1] * v[1] + v[2] * v[2], uv = u[0] * v[0] + u[1] * v[1] + u[2] * v[2]
+          const qu = q[0] * u[0] + q[1] * u[1] + q[2] * u[2], qv = q[0] * v[0] + q[1] * v[1] + q[2] * v[2]
+          const det = uu * vv - uv * uv
+          if (det > 1e-6) {
+            const s1 = (qu * vv - qv * uv) / det, s2 = (uu * qv - uv * qu) / det
+            let e = 0
+            for (let k = 0; k < 3; k++) e += (q[k] - s1 * u[k] - s2 * v[k]) ** 2
+            if (s1 > -0.05 && s2 > -0.05 && s1 + s2 < 1.05 && e < maxResid * maxResid) { reassign.set(c, [A, B, C]); continue }
+          }
+        }
+      }
+      if (!thin) continue
       // franja de JPEG: mesma claridade da vizinha, só com a cor desbotada
       if (nearDE > 0 && top.length) {
-        const [d0] = top[0]
-        const A = compLabel[d0]
+        const A = top[0][0]
         const e = Math.sqrt(dLab2(palLab[L], 0, palLab[A], 0))
         if (e < nearDE) {
-          const B = top.length > 1 ? compLabel[top[1][0]] : A
+          const B = top.length > 1 ? top[1][0] : A
           reassign.set(c, [A, B])
         }
       }
@@ -559,8 +689,9 @@ function removeFringes(s: Segmentation, maxResid: number, nearDE = 0, scale = 1)
     for (let i = 0; i < w * h; i++) {
       const r = reassign.get(comp[i])
       if (!r) continue
-      const da = dLab2(lab, i * 3, palLab[r[0]], 0), db = dLab2(lab, i * 3, palLab[r[1]], 0)
-      label[i] = da <= db ? r[0] : r[1]
+      let bl = r[0], bd = Infinity
+      for (const L2 of r) { const d = dLab2(lab, i * 3, palLab[L2], 0); if (d < bd) { bd = d; bl = L2 } }
+      label[i] = bl
     }
     computeDiag(s)
     components(s)

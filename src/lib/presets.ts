@@ -16,8 +16,8 @@ export const PURPOSES: PurposeInfo[] = [
     exportOpts: { format: 'svg', preset: 'edit', groupByColor: false, gapFiller: true },
   },
   {
-    id: 'print', label: 'Estampa', hint: 'Silk e sublimação: cores separadas em camadas, sem frestas.',
-    settings: { maxColors: 0, detail: 50, smoothness: 55, mergeSimilar: 65, background: 'keep' },
+    id: 'print', label: 'Estampa / DTF', hint: 'Silk, DTF e sublimação: fundo fora, cores separadas em camadas, sem frestas.',
+    settings: { maxColors: 0, detail: 50, smoothness: 55, mergeSimilar: 65, background: 'remove' },
     exportOpts: { format: 'pdf', preset: 'edit', groupByColor: true, gapFiller: true },
   },
   {

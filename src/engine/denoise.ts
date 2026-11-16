@@ -82,3 +82,23 @@ export function denoise(src: Uint8ClampedArray | Uint8Array, w: number, h: numbe
   }
   return a
 }
+
+/**
+ * Suavidade das bordas: entre dois pixels bem diferentes a 2 px de distância, quantos têm o do meio
+ * intermediário. Borda nítida (PNG, JPEG comum) fica em ~0,4–0,5; imagem borrada passa de 0,65.
+ */
+export function edgeSoftness(a: Uint8ClampedArray | Uint8Array, w: number, h: number): number {
+  let edges = 0, soft = 0
+  const step = Math.max(1, Math.floor((w * h) / 400000))
+  for (let y = 1; y < h - 1; y += step)
+    for (let x = 1; x < w - 2; x++) {
+      const i = (y * w + x) * 4, j = i + 4, k = i + 8
+      const dd = Math.abs(a[i] - a[k]) + Math.abs(a[i + 1] - a[k + 1]) + Math.abs(a[i + 2] - a[k + 2])
+      if (dd <= 90) continue
+      const d1 = Math.abs(a[i] - a[j]) + Math.abs(a[i + 1] - a[j + 1]) + Math.abs(a[i + 2] - a[j + 2])
+      const d2 = Math.abs(a[j] - a[k]) + Math.abs(a[j + 1] - a[k + 1]) + Math.abs(a[j + 2] - a[k + 2])
+      edges++
+      if (d1 > dd * 0.25 && d2 > dd * 0.25) soft++
+    }
+  return edges ? soft / edges : 0
+}

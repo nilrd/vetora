@@ -1,5 +1,5 @@
 import { segment } from './segment.ts'
-import { noiseLevel, denoise, upscale2x } from './denoise.ts'
+import { noiseLevel, denoise, upscale2x, edgeSoftness } from './denoise.ts'
 import { trace } from './trace.ts'
 import { chainPoints } from './subpixel.ts'
 import { fitChain, reverseCurve } from './fit.ts'
@@ -76,6 +76,7 @@ export function vectorize(inp: EngineInput): VectorResult {
   const photo = s.imageType === 'photo'
   const noise = noiseLevel(rgba, w, h)
   const noisy = noise > 0.06
+  const blurry = !photo && edgeSoftness(inp.rgba, W0, H0) > 0.65
   if (noisy || photo) {
     prog('limpando ruído', 0.02)
     rgba = denoise(rgba, w, h, photo ? 3 : noise > 0.5 ? 3 : 2, 2, photo ? 10 : 14)
@@ -97,7 +98,7 @@ export function vectorize(inp: EngineInput): VectorResult {
   const mergeDist = 3 + (s.mergeSimilar / 100) * 16 // 3..19 ΔE
 
   prog('cores', 0.05)
-  const seg = segment({ rgba, w, h, maxColors: s.maxColors, palette: s.palette, mergeDist, minArea, photo, noisy, mergeMap: s.palette ? s.mergeMap : undefined, scale: K, paletteFrom: up ? orig : undefined })
+  const seg = segment({ rgba, w, h, maxColors: s.maxColors, palette: s.palette, mergeDist, minArea, photo, noisy, blurry, mergeMap: s.palette ? s.mergeMap : undefined, scale: K, paletteFrom: up ? orig : undefined })
   prog('contornos', 0.4)
   const tr = trace(seg, (f) => prog('contornos', 0.4 + f * 0.2))
   prog('curvas', 0.6)
@@ -120,6 +121,14 @@ export function vectorize(inp: EngineInput): VectorResult {
     for (let y = 0; y < h; y++) for (const x of [0, w - 1]) { const l = seg.label[y * w + x]; cnt.set(l, (cnt.get(l) || 0) + 1) }
     let best = 0
     for (const [l, c] of cnt) if (c > best && l !== seg.transparent) { best = c; removeLabel = l }
+  }
+  // só as regiões dessa cor que encostam na borda da imagem são fundo; um branco no meio do desenho
+  // (olho, focinho, miolo de letra) fica, senão vira buraco na estampa
+  const removeComp = new Set<number>()
+  if (removeLabel >= 0) {
+    const touch = (x: number, y: number) => { const c = seg.comp[y * w + x]; if (seg.compLabel[c] === removeLabel) removeComp.add(c) }
+    for (let x = 0; x < w; x++) { touch(x, 0); touch(x, h - 1) }
+    for (let y = 0; y < h; y++) { touch(0, y); touch(w - 1, y) }
   }
 
   // nível de aninhamento: quem está dentro do furo de quem
@@ -159,7 +168,7 @@ export function vectorize(inp: EngineInput): VectorResult {
   let nodes = 0
   for (let c = 0; c < nC; c++) {
     const L = seg.compLabel[c]
-    if (L === seg.transparent || L === removeLabel) continue
+    if (L === seg.transparent || removeComp.has(c)) continue
     const ls = tr.loops[c]
     const outer = ls.find((l) => l.outer)
     if (!outer) continue
