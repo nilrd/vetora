@@ -380,8 +380,30 @@ function noisyPolygon(p0: P[], scale: number): Curve | null {
     const long = Math.hypot(ux, uy) > 30 * scale && Math.hypot(vx, vy) > 30 * scale
     return long && Math.acos(Math.max(-1, Math.min(1, cos))) < (75 * Math.PI) / 180
   })
+  // canto arredondado de propósito: os pontos da borda não chegam perto do vértice vivo.
+  // A distância mínima até o vértice dá o raio: d = r·(1/sen(θ/2) − 1).
+  const fillet: { r: number; tlen: number; theta: number }[] = []
+  const reach2 = (14 * scale) ** 2
+  for (let k = 0; k < m; k++) {
+    const B = pts[k], A = pts[(k - 1 + m) % m], C = pts[(k + 1) % m]
+    const ux = A.x - B.x, uy = A.y - B.y, vx = C.x - B.x, vy = C.y - B.y
+    const la = Math.hypot(ux, uy), lc = Math.hypot(vx, vy)
+    const cos = (ux * vx + uy * vy) / (la * lc || 1)
+    const theta = Math.acos(Math.max(-1, Math.min(1, cos)))
+    let dmin = Infinity
+    for (const q of p0) { const d2 = (q.x - B.x) ** 2 + (q.y - B.y) ** 2; if (d2 < reach2 && d2 < dmin) dmin = d2 }
+    dmin = Math.sqrt(dmin)
+    const f = 1 / Math.sin(theta / 2) - 1
+    let r = dmin > 1.1 * scale && f > 0.05 ? dmin / f : 0
+    const tlenMax = Math.min(la, lc) * 0.4
+    let tlen = r / Math.tan(theta / 2)
+    if (tlen > tlenMax) { tlen = tlenMax; r = tlen * Math.tan(theta / 2) }
+    fillet.push({ r: r > 0.8 * scale ? r : 0, tlen, theta })
+  }
   const lim = (2 * scale) ** 2, limTip = (4.5 * scale) ** 2, near2 = (10 * scale) ** 2
   for (const q of p0) {
+    // perto de um canto arredondado a distância ao polígono vivo não vale
+    if (fillet.some((f, k) => f.r > 0 && (q.x - pts[k].x) ** 2 + (q.y - pts[k].y) ** 2 < (f.tlen * 1.3) ** 2)) continue
     let best = Infinity
     for (let k = 0; k < m; k++) {
       const A = pts[k], B = pts[(k + 1) % m]
@@ -395,9 +417,34 @@ function noisyPolygon(p0: P[], scale: number): Curve | null {
       if (!tip || best > limTip) return null
     }
   }
-  const segs: Seg[] = pts.slice(1).map((q) => ({ t: 'L' as const, x: q.x, y: q.y }))
-  segs.push({ t: 'L', x: pts[0].x, y: pts[0].y })
-  return { start: pts[0], segs, closed: true }
+  // monta: reta até o início do arredondado, arco (Bézier) até o fim, e assim por diante
+  const segs: Seg[] = []
+  const tang = (k: number) => {
+    const B = pts[k], A = pts[(k - 1 + m) % m], C = pts[(k + 1) % m]
+    const f = fillet[k]
+    if (!f.r) return { in: B, out: B }
+    const ua = Math.hypot(A.x - B.x, A.y - B.y), uc = Math.hypot(C.x - B.x, C.y - B.y)
+    return {
+      in: { x: B.x + ((A.x - B.x) / ua) * f.tlen, y: B.y + ((A.y - B.y) / ua) * f.tlen },
+      out: { x: B.x + ((C.x - B.x) / uc) * f.tlen, y: B.y + ((C.y - B.y) / uc) * f.tlen },
+    }
+  }
+  const T = pts.map((_, k) => tang(k))
+  const start = T[0].out
+  for (let k = 1; k <= m; k++) {
+    const kk = k % m
+    segs.push({ t: 'L', x: T[kk].in.x, y: T[kk].in.y })
+    const f = fillet[kk]
+    if (f.r) {
+      // arco de ângulo φ = π − θ: alças a 4/3·tan(φ/4)·r ao longo das tangentes
+      const phi = Math.PI - f.theta
+      const h = (4 / 3) * Math.tan(phi / 4) * f.r
+      const B = pts[kk], I = T[kk].in, O = T[kk].out
+      const di = Math.hypot(B.x - I.x, B.y - I.y) || 1, doo = Math.hypot(B.x - O.x, B.y - O.y) || 1
+      segs.push({ t: 'C', x1: I.x + ((B.x - I.x) / di) * h, y1: I.y + ((B.y - I.y) / di) * h, x2: O.x + ((B.x - O.x) / doo) * h, y2: O.y + ((B.y - O.y) / doo) * h, x: O.x, y: O.y })
+    }
+  }
+  return { start, segs, closed: true }
 }
 
 // ---------- Círculo ----------
