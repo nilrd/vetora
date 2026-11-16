@@ -41,7 +41,12 @@ export function toSvg(r: VectorResult, o: SvgOptions = {}): string {
       g.push(s.dCutout)
     }
     // por cor exige recortes (sem sobreposição), senão a ordem entre cores quebra
-    for (const [ci, ds] of groups) {
+    // da cor mais clara para a mais escura: o traço que fecha frestas de cada cor escura passa por cima
+    // da clara (a escura "engorda" um fio). Na ordem inversa, o claro invade o escuro e aparece
+    // um contorno claro em volta do preto na impressão.
+    const lum = (ci: number) => { const c = r.palette[ci]; return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] }
+    const order = [...groups.entries()].sort((a, b) => lum(b[0]) - lum(a[0]))
+    for (const [ci, ds] of order) {
       const c = hex(r.palette[ci])
       body += `<g id="cor-${c.slice(1)}" fill="${c}"${gap ? ` stroke="${c}" stroke-width="${gw}" stroke-linejoin="round"` : ''}><path fill-rule="evenodd" d="${ds.join('')}"/></g>`
     }

@@ -37,7 +37,12 @@ export function upscale2x(src: Uint8ClampedArray | Uint8Array, w: number, h: num
       const sx = (X + 0.5) / 2 - 0.5, x0 = Math.floor(sx), tx = sx - x0
       for (let c = 0; c < 4; c++) {
         for (let k = -1; k <= 2; k++) col[k + 1] = cub(px(x0 - 1, y0 + k, c), px(x0, y0 + k, c), px(x0 + 1, y0 + k, c), px(x0 + 2, y0 + k, c), tx)
-        out[(Y * W + X) * 4 + c] = cub(col[0], col[1], col[2], col[3], ty)
+        // sem "passar do ponto" (overshoot): fica entre o menor e o maior dos 4 pixels vizinhos,
+        // senão a borda ganha um anel de cor nova que vira forma extra
+        const a = px(x0, y0, c), b = px(x0 + 1, y0, c), d = px(x0, y0 + 1, c), e = px(x0 + 1, y0 + 1, c)
+        const lo = Math.min(a, b, d, e), hi = Math.max(a, b, d, e)
+        const v = cub(col[0], col[1], col[2], col[3], ty)
+        out[(Y * W + X) * 4 + c] = v < lo ? lo : v > hi ? hi : v
       }
     }
   }

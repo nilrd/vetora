@@ -19,7 +19,8 @@ export interface Settings {
   /** 0..100 — junta tons parecidos */
   mergeSimilar: number
   background: 'keep' | 'remove'
-  /** amplia 2x por dentro antes de vetorizar (experimental; padrão: não — o sub-pixel rende mais) */
+  /** amplia 2x por dentro antes de vetorizar. Padrão (sem valor): automático, em imagens pequenas
+   *  limpas ou em preto e branco. true/false força. */
   upscale?: boolean
 }
 
@@ -57,6 +58,10 @@ export interface Shape {
   d: string
   /** caminho com furos (modo recortes, regra evenodd) */
   dCutout: string
+  /** furos do contorno: o caminho e as formas que encostam nele por dentro.
+   *  No modo empilhado, um furo só é recortado quando alguma dessas formas não é desenhada
+   *  (fundo removido ou cor apagada); senão a forma de dentro já cobre o furo. */
+  holes?: { d: string; inner: number[] }[]
   area: number
   /** nível de aninhamento (0 = encosta na borda da imagem ou no fundo) */
   level: number

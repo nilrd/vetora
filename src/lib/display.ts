@@ -1,5 +1,6 @@
 import type { RGB, VectorResult } from '../engine/types.ts'
 import { hex } from '../engine/color.ts'
+import { visibleStacked } from '../engine/holes.ts'
 
 /** Resultado com as edições aplicadas (cores trocadas). */
 export function applyEdits(r: VectorResult, overrides: Map<number, RGB>, regionColors?: Map<number, RGB>): VectorResult {
@@ -24,7 +25,7 @@ export function hiddenIds(r: VectorResult, hidden: Set<number>, hiddenColors: Se
 
 /** SVG para a tela: cada forma com data-id (para clicar) e traço por baixo para fechar frestas. */
 export function displaySvg(r: VectorResult, hidden: Set<number>): string {
-  const vis = r.shapes.filter((s) => !hidden.has(s.id))
+  const vis = visibleStacked(r.shapes, hidden)
   const strokes = vis.map((s) => `<path stroke="${hex(s.color)}" d="${s.d}"/>`).join('')
   const fills = vis.map((s) => `<path data-id="${s.id}" fill="${hex(s.color)}" d="${s.d}"/>`).join('')
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${r.width} ${r.height}" preserveAspectRatio="none" shape-rendering="geometricPrecision"><g fill="none" stroke-width="0.5" stroke-linejoin="round">${strokes}</g>${fills}</svg>`

@@ -1,6 +1,7 @@
 import type { VectorResult, Shape, RGB } from '../engine/types.ts'
 import { toSvg } from '../engine/svg.ts'
 import { hex } from '../engine/color.ts'
+import { visibleStacked } from '../engine/holes.ts'
 
 export type Format = 'svg' | 'pdf' | 'eps' | 'dxf' | 'png'
 export type Unit = 'px' | 'mm' | 'cm' | 'in'
@@ -46,7 +47,7 @@ export function parseD(d: string): Cmd[] {
 }
 
 function visibleShapes(r: VectorResult, hidden: Set<number>): Shape[] {
-  return r.shapes.filter((s) => !hidden.has(s.id))
+  return visibleStacked(r.shapes, hidden)
 }
 
 /** O que desenhar em PDF/EPS/DXF: formas (com cor) ou, no corte por bordas, cada fronteira uma vez. */

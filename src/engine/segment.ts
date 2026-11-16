@@ -12,6 +12,10 @@ export interface SegmentInput {
   photo: boolean
   noisy?: boolean
   mergeMap?: Record<number, number>
+  /** a imagem foi ampliada por dentro (2 = 2x): larguras medidas em px crescem junto */
+  scale?: number
+  /** imagem original (antes da ampliação): as cores da paleta saem dela, não da ampliada */
+  paletteFrom?: { rgba: Uint8ClampedArray | Uint8Array; w: number; h: number }
 }
 
 export interface Segmentation {
@@ -253,8 +257,8 @@ function addThinColors(pal: Float32Array, lab: Float32Array, alpha: Uint8Array, 
   return cur
 }
 
-export function segment(inp: SegmentInput): Segmentation {
-  const { rgba, w, h } = inp
+/** Lab, alfa e pixels "lisos" (parecidos com todos os vizinhos). */
+function analyze(rgba: Uint8ClampedArray | Uint8Array, w: number, h: number, FT: number) {
   const n = w * h
   const lab = new Float32Array(n * 3)
   const alpha = new Uint8Array(n)
@@ -262,9 +266,7 @@ export function segment(inp: SegmentInput): Segmentation {
     rgbToLab(rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2], lab, i * 3)
     alpha[i] = rgba[i * 4 + 3]
   }
-  // pixels "lisos": parecidos com todos os vizinhos
   const flat = new Uint8Array(n)
-  const FT = inp.photo ? 5 : 7
   const ft2 = FT * FT
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++) {
@@ -277,8 +279,28 @@ export function segment(inp: SegmentInput): Segmentation {
       else if (y < h - 1 && dLab2(lab, i * 3, lab, (i + w) * 3) > ft2) ok = false
       flat[i] = ok ? 1 : 0
     }
-  let pal = pickPalette(lab, alpha, w, h, flat, inp)
-  if (!inp.palette?.length && !inp.photo) pal = addThinColors(pal, lab, alpha, flat, n, inp)
+  return { lab, alpha, flat }
+}
+
+export function segment(inp: SegmentInput): Segmentation {
+  const { rgba, w, h } = inp
+  const n = w * h
+  const FT0 = inp.photo ? 5 : 7
+  // ampliada: a diferença entre vizinhos cai pela metade, então "liso" precisa ser mais exigente
+  const { lab, alpha, flat } = analyze(rgba, w, h, FT0 / Math.sqrt(inp.scale || 1))
+  let pal: Float32Array
+  if (inp.paletteFrom) {
+    // cores escolhidas na imagem original: na ampliada, a mistura das bordas parece cor "lisa"
+    const o = inp.paletteFrom
+    const sc = inp.scale || 1
+    const oi = { ...inp, minArea: Math.max(1, inp.minArea / (sc * sc)) }
+    const a = analyze(o.rgba, o.w, o.h, FT0)
+    pal = pickPalette(a.lab, a.alpha, o.w, o.h, a.flat, oi)
+    if (!inp.palette?.length && !inp.photo) pal = addThinColors(pal, a.lab, a.alpha, a.flat, o.w * o.h, oi)
+  } else {
+    pal = pickPalette(lab, alpha, w, h, flat, inp)
+    if (!inp.palette?.length && !inp.photo) pal = addThinColors(pal, lab, alpha, flat, n, inp)
+  }
   const K = pal.length / 3
   const T = K // rótulo transparente
   const palRgb: RGB[] = []
@@ -405,8 +427,11 @@ export function segment(inp: SegmentInput): Segmentation {
   computeDiag(seg)
   components(seg)
   mergeSpecks(seg, inp.minArea)
-  removeFringes(seg, inp.noisy ? 12 : 6, inp.noisy ? 22 : 0)
-  if (inp.noisy) unifyThin(seg, 40)
+  const sc = inp.scale || 1
+  removeFringes(seg, inp.noisy ? 12 : 6, inp.noisy ? 22 : 0, sc)
+  if (inp.noisy) unifyThin(seg, 40, sc)
+  // a limpeza das franjas pode deixar pedacinhos soltos: absorve de novo
+  if (sc > 1) mergeSpecks(seg, inp.minArea)
   return seg
 }
 
@@ -414,7 +439,7 @@ export function segment(inp: SegmentInput): Segmentation {
  * Em JPEG, um traço fino perde saturação em trechos e vira duas cores alternadas.
  * Regiões finas vizinhas com cores próximas viram uma só (a cor da maior).
  */
-function unifyThin(s: Segmentation, maxDE: number) {
+function unifyThin(s: Segmentation, maxDE: number, scale = 1) {
   const { w, h, comp, compArea, compLabel, label } = s
   const T = s.transparent
   const per = new Int32Array(s.nComp)
@@ -432,7 +457,7 @@ function unifyThin(s: Segmentation, maxDE: number) {
       }
     }
   const palLab = s.palette.map((p) => { const o = new Float32Array(3); rgbToLab(p[0], p[1], p[2], o, 0); return o })
-  const thin = (c: number) => per[c] > 0 && compArea[c] / per[c] < 0.9
+  const thin = (c: number) => per[c] > 0 && compArea[c] / per[c] < 0.9 * scale
   // soma, por par de cores, quanto de borda os traços finos dividem
   const colorPair = new Map<number, number>()
   for (const [k, len] of pairs) {
@@ -471,7 +496,7 @@ function unifyThin(s: Segmentation, maxDE: number) {
  * Franjas: regiões finas cuja cor é só a mistura das duas vizinhas (antialiasing ou chiado do JPEG).
  * Cada pixel da franja volta para a vizinha mais parecida com ele.
  */
-function removeFringes(s: Segmentation, maxResid: number, nearDE = 0) {
+function removeFringes(s: Segmentation, maxResid: number, nearDE = 0, scale = 1) {
   for (let round = 0; round < 2; round++) {
     const { w, h, comp, compLabel, compArea, lab, label } = s
     const T = s.transparent
@@ -498,7 +523,7 @@ function removeFringes(s: Segmentation, maxResid: number, nearDE = 0) {
     for (let c = 0; c < s.nComp; c++) {
       const L = compLabel[c]
       if (L === T || !per[c]) continue
-      const thin = compArea[c] / per[c] < 0.9 // largura média < ~2 px
+      const thin = compArea[c] / per[c] < 0.9 * scale // largura média < ~2 px (da imagem original)
       if (!thin) continue
       const m = nb.get(c)
       if (!m) continue

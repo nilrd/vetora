@@ -86,6 +86,30 @@ describe('motor', () => {
     expect(r.shapes.length).toBeGreaterThanOrEqual(3)
   })
 
+  it('ao remover o fundo, o miolo das formas fica vazado (não tampado)', async () => {
+    // anel preto: quadrado 40x40 com furo 20x20, em fundo branco
+    const w = 64, a = new Uint8Array(w * w * 4)
+    for (let y = 0; y < w; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4
+      const ring = x >= 12 && x < 52 && y >= 12 && y < 52 && !(x >= 22 && x < 42 && y >= 22 && y < 42)
+      const v = ring ? 0 : 255
+      a[i] = a[i + 1] = a[i + 2] = v; a[i + 3] = 255
+    }
+    const { Resvg } = await import('@resvg/resvg-js')
+    const center = (svg: string) => {
+      const img = new Resvg(svg, { background: '#ff0000' }).render()
+      const o = (32 * img.width + 32) * 4
+      return [img.pixels[o], img.pixels[o + 1], img.pixels[o + 2]]
+    }
+    const r = vectorize({ rgba: a, width: w, height: w, settings: { background: 'remove' } })
+    expect(center(toSvg(r))).toEqual([255, 0, 0]) // o fundo vermelho aparece pelo furo
+    // apagar a cor branca (sem remover fundo) também vaza o furo na exportação
+    const r2 = vectorize({ rgba: a, width: w, height: w })
+    const white = new Set(r2.shapes.filter((s) => s.color[0] > 200).map((s) => s.id))
+    const { buildSvg } = await import('../lib/export.ts')
+    expect(center(buildSvg(r2, { ...defaultExport }, white))).toEqual([255, 0, 0])
+  })
+
   it('juntar cores com paleta fixa respeita a cor escolhida', () => {
     const r0 = vectorize({ rgba: synth(), width: 64, height: 64 })
     const blue = r0.palette.findIndex((c) => c[2] > 180 && c[0] < 60)

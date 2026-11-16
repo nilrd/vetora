@@ -3,3 +3,4 @@ dist
 bench/out
 
 .npmrc
+tsconfig.tsbuildinfo

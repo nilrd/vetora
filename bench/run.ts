@@ -78,7 +78,7 @@ for (const f of readdirSync(gtDir).filter((f) => f.endsWith('.svg')).sort()) {
       const t0 = Date.now()
       let svg: string
       if (eng === 'vetora') {
-        const r = vectorize({ rgba: vr.rgba, width: vr.w, height: vr.h })
+        const r = vectorize({ rgba: vr.rgba, width: vr.w, height: vr.h, settings: process.env.BENCH_SET ? JSON.parse(process.env.BENCH_SET) : undefined })
         svg = toSvg(r)
       } else {
         svg = vtracer.convertPixels(vr.rgba, vr.w, vr.h, {})

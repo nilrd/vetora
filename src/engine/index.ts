@@ -5,8 +5,11 @@ import { chainPoints } from './subpixel.ts'
 import { fitChain, reverseCurve } from './fit.ts'
 import type { Curve, Progress, RGB, Seg, Settings, Shape, VectorResult } from './types.ts'
 import { defaultSettings } from './types.ts'
+import { stackedD } from './holes.ts'
 
 export * from './types.ts'
+
+export { stackedD, visibleStacked } from './holes.ts'
 
 let K = 1 // fator de escala da saída (imagem ampliada internamente)
 const fmt = (v: number) => {
@@ -41,6 +44,20 @@ function detectAA(rgba: Uint8ClampedArray | Uint8Array, w: number, h: number): b
   return colors.size > 12 && rare / total > 0.001
 }
 
+/** Arte quase sem cor (preto, branco e cinzas), como a maioria das estampas de uma cor. */
+function isNeutral(rgba: Uint8ClampedArray | Uint8Array, w: number, h: number): boolean {
+  const step = Math.max(1, Math.floor((w * h) / 100000))
+  let colored = 0, total = 0
+  for (let i = 0; i < w * h; i += step) {
+    const o = i * 4
+    if (rgba[o + 3] < 128) continue
+    const r = rgba[o], g = rgba[o + 1], b = rgba[o + 2]
+    total++
+    if (Math.max(r, g, b) - Math.min(r, g, b) > 40) colored++
+  }
+  return total > 0 && colored / total < 0.02
+}
+
 export interface EngineInput {
   rgba: Uint8ClampedArray | Uint8Array
   width: number
@@ -63,9 +80,13 @@ export function vectorize(inp: EngineInput): VectorResult {
     prog('limpando ruído', 0.02)
     rgba = denoise(rgba, w, h, photo ? 3 : noise > 0.5 ? 3 : 2, 2, photo ? 10 : 14)
   }
-  // imagem pequena: amplia 2x por dentro (mais pixels para as curvas); a saída volta ao tamanho original
-  const up = !photo && s.upscale === true && w * h <= 360_000 && w >= 8 && h >= 8
+  // imagem pequena: amplia 2x por dentro (mais pixels para as curvas); a saída volta ao tamanho original.
+  // Automático: tira os "espinhos" de pontas finas em artes pequenas. Em JPEG colorido fica desligado,
+  // porque a cor dos traços finos (já borrada pelo JPEG) desbota ainda mais.
+  const small = w * h <= 360_000 && w >= 8 && h >= 8
+  const up = !photo && small && (s.upscale ?? (!noisy || isNeutral(rgba, w, h)))
   K = up ? 2 : 1
+  const orig = { rgba, w, h }
   if (up) { rgba = upscale2x(rgba, w, h); w *= 2; h *= 2 }
   const hasAA = up || detectAA(rgba, w, h)
 
@@ -76,7 +97,7 @@ export function vectorize(inp: EngineInput): VectorResult {
   const mergeDist = 3 + (s.mergeSimilar / 100) * 16 // 3..19 ΔE
 
   prog('cores', 0.05)
-  const seg = segment({ rgba, w, h, maxColors: s.maxColors, palette: s.palette, mergeDist, minArea, photo, noisy, mergeMap: s.palette ? s.mergeMap : undefined })
+  const seg = segment({ rgba, w, h, maxColors: s.maxColors, palette: s.palette, mergeDist, minArea, photo, noisy, mergeMap: s.palette ? s.mergeMap : undefined, scale: K, paletteFrom: up ? orig : undefined })
   prog('contornos', 0.4)
   const tr = trace(seg, (f) => prog('contornos', 0.4 + f * 0.2))
   prog('curvas', 0.6)
@@ -144,11 +165,22 @@ export function vectorize(inp: EngineInput): VectorResult {
     if (!outer) continue
     const d = loopD(outer.refs)
     let dCut = d
-    for (const l of ls) if (!l.outer) dCut += loopD(l.refs)
+    const holes: { d: string; inner: number[] }[] = []
+    for (const l of ls) {
+      if (l.outer) continue
+      const hd = loopD(l.refs)
+      dCut += hd
+      const inner = new Set<number>()
+      for (const r of l.refs) { const ch = tr.chains[r.chain]; const o = ch.left === c ? ch.right : ch.left; if (o >= 0) inner.add(o) }
+      holes.push({ d: hd, inner: [...inner] })
+    }
     for (const r of outer.refs) nodes += curves[r.chain].segs.length
-    shapes.push({ id: c, color: seg.palette[L] as RGB, colorIndex: L, d, dCutout: dCut, area: seg.compArea[c] / (K * K), level: getLevel(c) })
+    shapes.push({ id: c, color: seg.palette[L] as RGB, colorIndex: L, d, dCutout: dCut, holes, area: seg.compArea[c] / (K * K), level: getLevel(c) })
   }
   shapes.sort((a, b) => a.level - b.level || b.area - a.area)
+  // fundo removido: recorta os furos que ficaram vazios
+  const drawn = new Set(shapes.map((x) => x.id))
+  for (let i = 0; i < shapes.length; i++) shapes[i] = { ...shapes[i], d: stackedD(shapes[i], drawn) }
   // fronteiras únicas (sem a moldura da imagem); a/b = ids das formas dos dois lados (-1 = nenhuma)
   const shown = new Set(shapes.map((x) => x.id))
   const edges = tr.chains.flatMap((ch, i) => {
