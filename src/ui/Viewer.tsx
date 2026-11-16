@@ -122,11 +122,13 @@ export function Viewer(p: Props) {
         )}
         {p.mode === 'outline' && <div className="vec" style={{ background: '#fff' }} dangerouslySetInnerHTML={{ __html: p.outlineSvg }} />}
         {p.mode === 'compare' && (
-          <div className="split" style={{ left: `${split}%`, width: 0, right: 'auto' }}>
-            <div className="knob" aria-label="Arraste para comparar"><IArrows /></div>
-          </div>
+          <div className="split" style={{ left: `${split}%`, width: 0, right: 'auto' }} />
         )}
       </div>
+      {p.mode === 'compare' && (
+        // a alça fica no meio da ALTURA VISÍVEL, não da imagem: continua à mão quando se rola a imagem
+        <div className="knob" aria-label="Arraste para comparar" style={{ left: view.x + (W * split) / 100 }}><IArrows /></div>
+      )}
       {p.mode === 'compare' && <><span className="tag-corner l">Original</span><span className="tag-corner r">Vetor</span></>}
     </div>
   )

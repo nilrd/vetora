@@ -1,6 +1,8 @@
 export interface LoadedImage {
   name: string
   url: string
+  /** o arquivo como veio (para o relato de vetorização ruim) */
+  file: Blob
   data: ImageData
   origWidth: number
   origHeight: number
@@ -35,7 +37,7 @@ export async function loadImage(file: Blob, name = 'imagem'): Promise<LoadedImag
   ctx.drawImage(bmp, 0, 0, w, h)
   bmp.close()
   const data = ctx.getImageData(0, 0, w, h)
-  return { name, url: URL.createObjectURL(file), data, origWidth: ow, origHeight: oh, scaled }
+  return { name, url: URL.createObjectURL(file), file, data, origWidth: ow, origHeight: oh, scaled }
 }
 
 export function baseName(name: string) {

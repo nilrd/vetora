@@ -10,6 +10,8 @@ import { Viewer, type ViewMode } from './ui/Viewer.tsx'
 import { Panel } from './ui/Panel.tsx'
 import { Home } from './ui/Home.tsx'
 import { Batch } from './ui/Batch.tsx'
+import { RelatoDialog } from './ui/Relato.tsx'
+import { enviarRelato } from './lib/relato.ts'
 import { IEraser, IFit, IMinus, IPlus, IRedo, IUndo, IImage } from './ui/icons.tsx'
 
 interface Edits { hidden: Set<number>; hiddenColors: Set<number>; overrides: Map<number, RGB>; regionColors: Map<number, RGB> }
@@ -43,6 +45,7 @@ export default function App() {
   const [zoom, setZoom] = useState(1)
   const [toast, setToast] = useState('')
   const [downloading, setDownloading] = useState(false)
+  const [relato, setRelato] = useState(false)
   const [edits, setEdits] = useState<Edits>(emptyEdits)
   const undoStack = useRef<Edits[]>([])
   const redoStack = useRef<Edits[]>([])
@@ -145,7 +148,10 @@ export default function App() {
         {screen === 'edit' && img && <span className="file">{img.name} · {img.data.width}×{img.data.height}</span>}
         <span className="spacer" />
         {screen === 'edit' ? (
-          <label className="btn small"><IImage /> Nova imagem<input hidden type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) openFile(f, f.name); e.target.value = '' }} /></label>
+          <>
+            <button className="btn small ghost" onClick={() => setRelato(true)} disabled={!edited} title="Mandar essa imagem para análise">Ficou ruim?</button>
+            <label className="btn small"><IImage /> Nova imagem<input hidden type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) openFile(f, f.name); e.target.value = '' }} /></label>
+          </>
         ) : (
           <nav>
             <button onClick={() => { setBatchFiles([]); setScreen('batch') }}>Lote</button>
@@ -233,6 +239,12 @@ export default function App() {
             sizeHint={tool === 'erase' ? 'Borracha ligada: clique nas regiões para apagar.' : tool === 'paint' ? 'Pincel ligado: clique numa região para pintar.' : ''}
           />
         </div>
+      )}
+      {relato && img && edited && (
+        <RelatoDialog
+          onClose={() => setRelato(false)}
+          onSend={(comentario) => enviarRelato({ nome: img.name, original: img.file, largura: img.origWidth, altura: img.origHeight, resultadoSvg: buildSvg(edited, exp, hidden), settings, exp, comentario })}
+        />
       )}
       {toast && <div className="toast" role="status">{toast}</div>}
     </>
