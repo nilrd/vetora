@@ -500,6 +500,8 @@ export function fitChain(raw: Float64Array, closed: boolean, opt: FitOptions, ha
   const n = p.length
   if (n < 2) return { start: p[0] || { x: 0, y: 0 }, segs: [], closed }
   if (!closed && n === 2) return { start: p[0], segs: [{ t: 'L', x: p[1].x, y: p[1].y }], closed }
+  // laço minúsculo (2 ou 3 pontos): só retas, não há curva a ajustar
+  if (closed && n < 4) return { start: p[0], segs: p.slice(1).map((q) => ({ t: 'L' as const, x: q.x, y: q.y })), closed }
 
   // círculo inteiro?
   if (closed && opt.primitives && n >= 12) {

@@ -35,9 +35,9 @@ export function useVectorizer() {
         if (m.id !== idRef.current) return
         if (m.type === 'progress') setProgress({ stage: m.stage, fraction: m.fraction })
         else if (m.type === 'done') { busyRef.current = false; setResult(m.result); setStatus('done'); resolve(m.result) }
-        else { busyRef.current = false; setError(m.message); setStatus('error'); reject(new Error(m.message)) }
+        else { busyRef.current = false; setResult(null); setError(m.message); setStatus('error'); reject(new Error(m.message)) }
       }
-      w.onerror = (e) => { busyRef.current = false; setError(e.message || 'Erro no processamento'); setStatus('error'); reject(e) }
+      w.onerror = (e) => { busyRef.current = false; setResult(null); setError(e.message || 'Erro no processamento'); setStatus('error'); reject(e) }
       const copy = new Uint8ClampedArray(img.data)
       w.postMessage({ id, rgba: copy, width: img.width, height: img.height, settings }, [copy.buffer])
     })
