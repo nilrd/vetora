@@ -43,7 +43,17 @@ export function useVectorizer() {
     })
   }, [])
 
-  const reset = useCallback(() => { setResult(null); setStatus('idle'); setError('') }, [])
+  const reset = useCallback(() => {
+    ++idRef.current
+    if (busyRef.current) {
+      workerRef.current?.terminate()
+      workerRef.current = null
+      busyRef.current = false
+    }
+    setResult(null)
+    setStatus('idle')
+    setError('')
+  }, [])
 
   return { run, reset, status, progress, result, setResult, error }
 }

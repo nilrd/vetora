@@ -16,9 +16,10 @@ interface Props {
   onZoomChange: (z: number) => void
 }
 
-/** Mostra original e vetor, com cortina para comparar, zoom na rodinha e arrastar para mover. */
+/** Mostra original e vetor com zoom na rodinha e arrasto para mover. */
 export function Viewer(p: Props) {
   const vp = useRef<HTMLDivElement>(null)
+  const firstPane = useRef<HTMLDivElement>(null)
   const [view, setView] = useState({ s: 1, x: 0, y: 0 })
   const [split, setSplit] = useState(50)
   const [grab, setGrab] = useState(false)
@@ -27,15 +28,13 @@ export function Viewer(p: Props) {
   const fit = useCallback(() => {
     const el = vp.current
     if (!el) return
-    const r = el.getBoundingClientRect()
-    // lado a lado: cada metade mostra a imagem inteira
-    const pw = p.mode === 'side' ? (r.width - 8) / 2 : r.width
-    const s = Math.min((pw - 48) / p.width, (r.height - 48) / p.height)
+    const { width, height } = (firstPane.current ?? el).getBoundingClientRect()
+    const s = Math.min((width - 48) / p.width, (height - 48) / p.height)
     const sc = Math.max(0.05, s)
-    setView({ s: sc, x: (pw - p.width * sc) / 2, y: (r.height - p.height * sc) / 2 })
-  }, [p.width, p.height, p.mode])
+    setView({ s: sc, x: (width - p.width * sc) / 2, y: (height - p.height * sc) / 2 })
+  }, [p.width, p.height])
 
-  useLayoutEffect(() => { fit() }, [fit, p.imgUrl])
+  useLayoutEffect(() => { fit() }, [fit, p.imgUrl, p.mode])
   useEffect(() => {
     const el = vp.current
     if (!el) return
@@ -46,10 +45,11 @@ export function Viewer(p: Props) {
   useEffect(() => { p.onZoomChange(view.s) }, [view.s]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const zoomAt = useCallback((factor: number, cx?: number, cy?: number) => {
+    const el = firstPane.current ?? vp.current
+    if (!el) return
+    const { width, height } = el.getBoundingClientRect()
+    const px = cx ?? width / 2, py = cy ?? height / 2
     setView((v) => {
-      const el = vp.current!
-      const r = el.getBoundingClientRect()
-      const px = cx ?? r.width / 2, py = cy ?? r.height / 2
       const s = Math.min(64, Math.max(0.05, v.s * factor))
       const k = s / v.s
       return { s, x: px - (px - v.x) * k, y: py - (py - v.y) * k }
@@ -67,14 +67,13 @@ export function Viewer(p: Props) {
     if (!el) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      const r = el.getBoundingClientRect()
-      let cx = e.clientX - r.left
-      if (p.mode === 'side') { const pw = (r.width - 8) / 2; if (cx > pw) cx -= pw + 8 }
-      zoomAt(Math.exp(-e.deltaY * 0.0015), cx, e.clientY - r.top)
+      const pane = (e.target as Element).closest('.pane') ?? el
+      const r = pane.getBoundingClientRect()
+      zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top)
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [zoomAt, p.mode])
+  }, [zoomAt])
 
   const onDown = (e: React.PointerEvent) => {
     const knob = (e.target as HTMLElement).closest('.knob') != null
@@ -118,7 +117,7 @@ export function Viewer(p: Props) {
         onDoubleClick={() => fit()}
         role="img" aria-label="Original e vetor lado a lado"
       >
-        <div className="pane">
+        <div ref={firstPane} className="pane">
           <div className="canvas" style={{ width: W, height: H, transform: tr }}>
             <img src={p.imgUrl} alt="" draggable={false} style={{ imageRendering: view.s > 2 ? 'pixelated' : 'auto' }} />
           </div>

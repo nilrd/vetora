@@ -37,7 +37,7 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>(prefs.settings)
   const [exp, setExp] = useState<ExportOptions>(prefs.exp)
   const [loadErr, setLoadErr] = useState('')
-  const [mode, setMode] = useState<ViewMode>('compare')
+  const [mode, setMode] = useState<ViewMode>('side')
   const [tool, setTool] = useState<'none' | 'erase' | 'paint'>('none')
   const [paintHex, setPaintHex] = useState('#e63946')
   const pick = tool !== 'none'
@@ -50,6 +50,7 @@ export default function App() {
   const undoStack = useRef<Edits[]>([])
   const redoStack = useRef<Edits[]>([])
   const vz = useVectorizer()
+  const resetVectorizer = vz.reset
 
   useEffect(() => {
     try { localStorage.setItem(STORE, JSON.stringify({ settings: { ...settings, palette: undefined, mergeMap: undefined }, exp })) } catch { /* sem armazenamento */ }
@@ -61,15 +62,16 @@ export default function App() {
     setLoadErr('')
     try {
       const li = await loadImage(f, name)
+      resetVectorizer()
       setImg((old) => { if (old) URL.revokeObjectURL(old.url); return li })
       setEdits(emptyEdits()); undoStack.current = []; redoStack.current = []
-      setScreen('edit'); setMode('compare'); setTool('none')
+      setScreen('edit'); setMode('side'); setTool('none')
       setSettings((s) => ({ ...s, palette: undefined, mergeMap: undefined }))
       if (li.scaled) flash(`Imagem reduzida para ${li.data.width}×${li.data.height} px para caber no limite de 4 MP.`)
     } catch (e) {
       setLoadErr(e instanceof Error ? e.message : 'Não deu para abrir essa imagem.')
     }
-  }, [])
+  }, [resetVectorizer])
 
   // vetoriza de novo quando a imagem ou os ajustes mudam (com uma pequena espera nos sliders)
   useEffect(() => {
@@ -137,7 +139,7 @@ export default function App() {
     } finally { setDownloading(false) }
   }
 
-  const backHome = () => { setScreen('home'); vz.reset() }
+  const backHome = () => { setScreen('home'); resetVectorizer() }
 
   return (
     <>
