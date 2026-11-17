@@ -1,5 +1,5 @@
 import { segment } from './segment.ts'
-import { noiseLevel, denoise, upscale2x, edgeSoftness } from './denoise.ts'
+import { noiseLevel, denoise, upscale2x, edgeSoftness, hasContinuousTones } from './denoise.ts'
 import { trace } from './trace.ts'
 import { chainPoints } from './subpixel.ts'
 import { fitChain, reverseCurve } from './fit.ts'
@@ -78,13 +78,13 @@ export function vectorize(inp: EngineInput): VectorResult {
   let w = W0, h = H0
   let rgba = inp.rgba
   const prog = inp.onProgress || (() => {})
-  const photo = s.imageType === 'photo'
+  const photo = s.imageType === 'photo' || (s.imageType === 'auto' && hasContinuousTones(rgba, w, h))
   const noise = noiseLevel(rgba, w, h)
   const noisy = noise > 0.06
   const blurry = !photo && edgeSoftness(inp.rgba, W0, H0) > 0.65
   if (noisy || photo) {
     prog('limpando ruído', 0.02)
-    rgba = denoise(rgba, w, h, photo ? 3 : noise > 0.5 ? 3 : 2, 2, photo ? 10 : 14)
+    rgba = denoise(rgba, w, h, photo ? 1 : noise > 0.5 ? 3 : 2, photo ? 1 : 2, photo ? 6 : 14)
   }
   // imagem pequena: amplia 2x por dentro (mais pixels para as curvas); a saída volta ao tamanho original.
   // Automático: tira os "espinhos" de pontas finas em artes pequenas. Em JPEG colorido fica desligado,
@@ -97,8 +97,8 @@ export function vectorize(inp: EngineInput): VectorResult {
   const hasAA = up || detectAA(rgba, w, h)
 
   const detail = s.detail / 100
-  let minArea = photo ? Math.round(12 - detail * 9) : Math.max(1, Math.round(6 - detail * 5))
-  if (noisy) minArea = Math.max(minArea, Math.round(Math.sqrt(W0 * H0) / 40))
+  let minArea = photo ? Math.max(1, Math.round(8 - detail * 6)) : Math.max(1, Math.round(6 - detail * 5))
+  if (noisy && !photo) minArea = Math.max(minArea, Math.round(Math.sqrt(W0 * H0) / 40))
   minArea *= K * K
   const mergeDist = 3 + (s.mergeSimilar / 100) * 16 // 3..19 ΔE
 
@@ -109,13 +109,13 @@ export function vectorize(inp: EngineInput): VectorResult {
   prog('curvas', 0.6)
 
   const smooth = s.smoothness / 100
-  const tolerance = (photo ? 0.6 + smooth * 1.2 : 0.2 + smooth * 0.6 + (noisy ? 0.15 : 0)) * (up ? 1.6 : 1)
+  const tolerance = (photo ? 0.2 + smooth * 0.6 : 0.2 + smooth * 0.6 + (noisy ? 0.15 : 0)) * (up ? 1.6 : 1)
   const cornerAngle = s.corners === 'sharp' ? 38 : s.corners === 'round' ? 85 : 52
   const curves: Curve[] = tr.chains.map((ch, i) => {
     if (i % 500 === 0) prog('curvas', 0.6 + (i / tr.chains.length) * 0.35)
     const pts = chainPoints(ch, seg, rgba, tr.H, hasAA)
     // com ruído (JPEG) a borda medida treme: suaviza mais
-    return fitChain(pts, ch.closed, { tolerance, cornerAngle, smooth: noisy ? 1.5 : hasAA ? 0.5 : 1, primitives: true, scale: K }, hasAA)
+    return fitChain(pts, ch.closed, { tolerance, cornerAngle, smooth: photo ? 0.5 : noisy ? 1.5 : hasAA ? 0.5 : 1, primitives: !photo, scale: K }, hasAA)
   })
 
   // fundo a remover: a cor que mais aparece na borda da imagem

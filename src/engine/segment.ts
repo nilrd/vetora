@@ -78,7 +78,7 @@ function pickPalette(lab: Float32Array, alpha: Uint8Array, w: number, h: number,
   }
   pts.sort((a, b) => b[3] - a[3])
   // foto com quantidade de cores pedida: junta menos de saída, para a quantidade pedida valer
-  const md = photo ? Math.min(inp.mergeDist, inp.maxColors > 0 ? 4.5 : 9) : inp.mergeDist
+  const md = photo ? Math.min(5, inp.mergeDist * 0.3) : inp.mergeDist
   // agrupamento inicial apertado: tons próximos mas diferentes (creme × branco) ficam separados;
   // a junção de verdade acontece depois, olhando o tamanho de cada cor
   const md2 = photo ? md * md : Math.min(md, 5.5) ** 2
@@ -150,11 +150,11 @@ function pickPalette(lab: Float32Array, alpha: Uint8Array, w: number, h: number,
   }
   // descarta cores raras (ruído)
   const total = cl.reduce((s, c) => s + c[3], 0)
-  const minW = Math.max(photo ? 6 : 3, total * (photo ? 0.0008 : 0.00015), inp.minArea * 0.75)
+  const minW = Math.max(3, total * (photo ? 0.00005 : 0.00015), inp.minArea * 0.75)
   cl = cl.filter((c) => c[3] >= minW)
   if (!cl.length) cl = [[50, 0, 0, 1]]
   // limite de cores: junta o par mais barato (Ward)
-  const maxC = inp.maxColors > 0 ? inp.maxColors : photo ? 48 : 64
+  const maxC = inp.maxColors > 0 ? inp.maxColors : photo ? 128 : 64
   while (cl.length > maxC) {
     let bi = 0, bj = 1, bc = Infinity
     for (let i = 0; i < cl.length; i++)
@@ -401,7 +401,7 @@ export function segment(inp: SegmentInput): Segmentation {
   // 1) transparentes e lisos
   for (let i = 0; i < n; i++) {
     if (alpha[i] < 128) label[i] = T
-    else if (flat[i]) label[i] = nearest(i * 3)
+    else if (flat[i] || inp.photo) label[i] = nearest(i * 3)
   }
   // 2) pixels de borda: explicados como mistura de duas cores vizinhas (antialiasing)
   const R = 2
@@ -506,13 +506,13 @@ export function segment(inp: SegmentInput): Segmentation {
     w, h, label, comp: new Int32Array(n), compLabel: new Int32Array(0), compArea: new Int32Array(0), nComp: 0,
     diag: new Uint8Array((w + 1) * (h + 1)), palette: palRgb, transparent: T, lab,
   }
-  if (inp.noisy && !inp.palette?.length) absorbRareVariants(seg, inp.mergeDist * 1.6)
+  if (inp.noisy && !inp.photo && !inp.palette?.length) absorbRareVariants(seg, inp.mergeDist * 1.6)
   computeDiag(seg)
   components(seg)
-  mergeSpecks(seg, inp.minArea)
+  mergeSpecks(seg, inp.minArea, inp.photo)
   const sc = inp.scale || 1
-  removeFringes(seg, inp.noisy ? 12 : 6, inp.noisy ? 22 : 0, sc, !!inp.blurry)
-  if (inp.noisy) unifyThin(seg, 40, sc)
+  if (!inp.photo) removeFringes(seg, inp.noisy ? 12 : 6, inp.noisy ? 22 : 0, sc, !!inp.blurry)
+  if (inp.noisy && !inp.photo) unifyThin(seg, 40, sc)
   // a limpeza das franjas pode deixar pedacinhos soltos: absorve de novo
   if (sc > 1) mergeSpecks(seg, inp.minArea)
   return seg
@@ -789,7 +789,7 @@ function components(s: Segmentation) {
 }
 
 /** Manchas menores que a área mínima são absorvidas pelo vizinho com quem mais fazem fronteira. */
-function mergeSpecks(s: Segmentation, minArea: number) {
+function mergeSpecks(s: Segmentation, minArea: number, preserveContrast = false) {
   for (let round = 0; round < 4; round++) {
     const { w, h, comp, compArea, compLabel, label, lab } = s
     const small: number[] = []
@@ -837,6 +837,8 @@ function mergeSpecks(s: Segmentation, minArea: number) {
           rgbToLab(p[0], p[1], p[2], palLab, 0)
           colorPenalty = Math.sqrt((mean[0] - palLab[0]) ** 2 + (mean[1] - palLab[1]) ** 2 + (mean[2] - palLab[2]) ** 2)
         } else colorPenalty = 40
+        // Uma marca pequena com contraste próprio pode ser parte de uma letra.
+        if (preserveContrast && colorPenalty > 18) continue
         const score = len * 4 - colorPenalty
         if (score > bs) { bs = score; best = r }
       }

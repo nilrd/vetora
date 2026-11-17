@@ -1,5 +1,41 @@
 import { rgbToLab } from './color.ts'
 
+/** Sombras e textura distribuídas pela imagem, em vez de apenas antialiasing nas bordas. */
+export function hasContinuousTones(rgba: Uint8ClampedArray | Uint8Array, w: number, h: number): boolean {
+  // Em imagens pequenas, blocos JPEG ocupam uma fração grande da arte e imitam textura.
+  // Nelas, o modo Foto explícito permite preservar tons sem mudar o tratamento de logos.
+  if (w * h <= 360000) return false
+  const step = Math.max(1, Math.ceil(Math.sqrt(w * h / 60000)))
+  const bins = new Set<number>()
+  let count = 0, subtle = 0, edges = 0, broad = 0
+  for (let y = 4; y < h - 4; y += step) {
+    for (let x = 4; x < w - 4; x += step) {
+      const i = y * w + x
+      if (rgba[i * 4 + 3] < 250) continue
+      count++
+      bins.add((rgba[i * 4] >> 4) * 256 + (rgba[i * 4 + 1] >> 4) * 16 + (rgba[i * 4 + 2] >> 4))
+      let variation = 0
+      for (const j of [i - 1, i + 1, i - w, i + w]) {
+        let difference = 0
+        for (let c = 0; c < 3; c++) difference += Math.abs(rgba[i * 4 + c] - rgba[j * 4 + c])
+        variation = Math.max(variation, difference)
+      }
+      if (variation >= 6 && variation < 60) subtle++
+      else if (variation >= 60) edges++
+      if (variation >= 6 && variation < 30) {
+        let spread = 0
+        for (const j of [i - 4, i + 4, i - 4 * w, i + 4 * w]) {
+          let difference = 0
+          for (let c = 0; c < 3; c++) difference += Math.abs(rgba[i * 4 + c] - rgba[j * 4 + c])
+          spread = Math.max(spread, difference)
+        }
+        if (spread >= 12 && spread < 60) broad++
+      }
+    }
+  }
+  return bins.size >= 64 && subtle > count * 0.12 && edges > count * 0.08 && broad > count * 0.04
+}
+
 /**
  * Mede o ruído da imagem (típico de JPEG): fração de pixels com variação pequena, mas não zero,
  * em relação aos vizinhos. PNG limpo dá perto de 0; JPEG dá bem mais.

@@ -60,7 +60,7 @@ export function Panel(p: Props) {
         <h3>Cores</h3>
         <div className="field">
           <label>Quantidade de cores <span>{s.maxColors === 0 ? 'automático' : s.maxColors}</span></label>
-          <input type="range" min={0} max={32} step={1} value={s.maxColors}
+          <input type="range" min={0} max={128} step={1} value={s.maxColors}
             onChange={(e) => p.onSettings({ maxColors: Number(e.target.value), palette: undefined })} aria-label="Quantidade de cores" />
         </div>
         <div className="field">

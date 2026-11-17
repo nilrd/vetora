@@ -1,6 +1,7 @@
 node_modules
 dist
 bench/out
+bench/reais/relatos/
 
 .npmrc
 tsconfig.tsbuildinfo

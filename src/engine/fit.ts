@@ -318,7 +318,7 @@ function noisyPolygon(p0: P[], scale: number): Curve | null {
   verts = verts.filter((_, k) => turn(P0(k - 1), P0(k), P0(k + 1)) >= 30)
   // lado mínimo: um retângulo (4 cantos retos) pode ser fino (traço, barra); nos outros, lado curto é canto mordido
   const isRect = verts.length === 4 && [0, 1, 2, 3].every((k) => { const a = turn(P0(k - 1), P0(k), P0(k + 1)); return a > 75 && a < 105 })
-  const minSide = (isRect ? 3 : 22) * scale
+  const minSide = (isRect ? 3 : 12) * scale
   // lado curtinho = canto arredondado ou mordido: some, e o canto vira a interseção das retas vizinhas
   for (let guard = 0; guard < 20 && verts.length > 3; guard++) {
     let ks = -1, best = Infinity

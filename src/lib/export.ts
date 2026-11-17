@@ -89,16 +89,21 @@ export function buildPdf(r: VectorResult, o: ExportOptions, hidden: Set<number>)
   const cut = o.preset === 'cut'
   let c = `q ${f(sx)} 0 0 ${f(-sy)} 0 ${f(H)} cm\n`
   if (cut) c += `${f(Math.max(0.1, r.width / 1000))} w 1 j\n`
-  for (const { color, d } of drawList(r, o, hidden)) {
-    const [R, G, B] = color.map((v) => v / 255)
-    c += cut ? `${f(R)} ${f(G)} ${f(B)} RG\n` : `${f(R)} ${f(G)} ${f(B)} rg\n`
-    for (const k of parseD(d)) {
-      if (k.c === 'M') c += `${f(k.v[0])} ${f(k.v[1])} m\n`
-      else if (k.c === 'L') c += `${f(k.v[0])} ${f(k.v[1])} l\n`
-      else if (k.c === 'C') c += `${k.v.map(f).join(' ')} c\n`
-      else c += 'h\n'
+  const items = drawList(r, o, hidden)
+  const passes = !cut && o.gapFiller ? [true, false] : [false]
+  for (const underlay of passes) {
+    if (underlay) c += '0.5 w 1 j\n'
+    for (const { color, d } of items) {
+      const [R, G, B] = color.map((v) => v / 255)
+      c += cut || underlay ? `${f(R)} ${f(G)} ${f(B)} RG\n` : `${f(R)} ${f(G)} ${f(B)} rg\n`
+      for (const k of parseD(d)) {
+        if (k.c === 'M') c += `${f(k.v[0])} ${f(k.v[1])} m\n`
+        else if (k.c === 'L') c += `${f(k.v[0])} ${f(k.v[1])} l\n`
+        else if (k.c === 'C') c += `${k.v.map(f).join(' ')} c\n`
+        else c += 'h\n'
+      }
+      c += cut || underlay ? 'S\n' : o.stacking === 'cutouts' ? 'f*\n' : 'f\n'
     }
-    c += cut ? 'S\n' : o.stacking === 'cutouts' ? 'f*\n' : 'f\n'
   }
   c += 'Q\n'
   const objs = [
@@ -129,16 +134,21 @@ export function buildEps(r: VectorResult, o: ExportOptions, hidden: Set<number>)
   let s = `%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 ${Math.ceil(W)} ${Math.ceil(H)}\n%%HiResBoundingBox: 0 0 ${f(W)} ${f(H)}\n%%Creator: Vetora\n%%LanguageLevel: 2\n%%EndComments\n`
   s += `gsave\n0 ${f(H)} translate ${f(W / r.width)} ${f(-H / r.height)} scale\n`
   if (cut) s += `${f(Math.max(0.1, r.width / 1000))} setlinewidth 1 setlinejoin\n`
-  for (const { color, d } of drawList(r, o, hidden)) {
-    const [R, G, B] = color.map((v) => v / 255)
-    s += `${f(R)} ${f(G)} ${f(B)} setrgbcolor\nnewpath\n`
-    for (const k of parseD(d)) {
-      if (k.c === 'M') s += `${f(k.v[0])} ${f(k.v[1])} moveto\n`
-      else if (k.c === 'L') s += `${f(k.v[0])} ${f(k.v[1])} lineto\n`
-      else if (k.c === 'C') s += `${k.v.map(f).join(' ')} curveto\n`
-      else s += 'closepath\n'
+  const items = drawList(r, o, hidden)
+  const passes = !cut && o.gapFiller ? [true, false] : [false]
+  for (const underlay of passes) {
+    if (underlay) s += '0.5 setlinewidth 1 setlinejoin\n'
+    for (const { color, d } of items) {
+      const [R, G, B] = color.map((v) => v / 255)
+      s += `${f(R)} ${f(G)} ${f(B)} setrgbcolor\nnewpath\n`
+      for (const k of parseD(d)) {
+        if (k.c === 'M') s += `${f(k.v[0])} ${f(k.v[1])} moveto\n`
+        else if (k.c === 'L') s += `${f(k.v[0])} ${f(k.v[1])} lineto\n`
+        else if (k.c === 'C') s += `${k.v.map(f).join(' ')} curveto\n`
+        else s += 'closepath\n'
+      }
+      s += cut || underlay ? 'stroke\n' : o.stacking === 'cutouts' ? 'eofill\n' : 'fill\n'
     }
-    s += cut ? 'stroke\n' : o.stacking === 'cutouts' ? 'eofill\n' : 'fill\n'
   }
   s += 'grestore\nshowpage\n%%EOF\n'
   return s
