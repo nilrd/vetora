@@ -253,7 +253,7 @@ function straightChain(p: P[], scale: number): boolean {
   const res = p.map((q) => ((q.x - A.x) * (B.y - A.y) - (q.y - A.y) * (B.x - A.x)) / L)
   let md = 0
   for (const r of res) md = Math.max(md, Math.abs(r))
-  if (md > 1.3 * scale) return false
+  if (md > 1.3 * scale * (1 + Math.min(1, L / (80 * scale)))) return false
   const qn = Math.floor(n / 4)
   for (let s0 = 0; s0 + qn <= n; s0 += qn) {
     let sm = 0
@@ -316,12 +316,15 @@ function noisyPolygon(p0: P[], scale: number): Curve | null {
   }
   const P0 = (k: number) => sm[verts[(k + verts.length) % verts.length]]
   verts = verts.filter((_, k) => turn(P0(k - 1), P0(k), P0(k + 1)) >= 30)
+  // lado mínimo: um retângulo (4 cantos retos) pode ser fino (traço, barra); nos outros, lado curto é canto mordido
+  const isRect = verts.length === 4 && [0, 1, 2, 3].every((k) => { const a = turn(P0(k - 1), P0(k), P0(k + 1)); return a > 75 && a < 105 })
+  const minSide = (isRect ? 3 : 22) * scale
   // lado curtinho = canto arredondado ou mordido: some, e o canto vira a interseção das retas vizinhas
   for (let guard = 0; guard < 20 && verts.length > 3; guard++) {
     let ks = -1, best = Infinity
     for (let k = 0; k < verts.length; k++) {
       const A = P0(k), B = P0(k + 1), L = Math.hypot(B.x - A.x, B.y - A.y)
-      if (L < 12 * scale && L < best) { best = L; ks = k }
+      if (L < minSide && L < best) { best = L; ks = k }
     }
     if (ks < 0) break
     // tira o vértice cujo giro é menor (o outro vira o canto)
@@ -337,13 +340,15 @@ function noisyPolygon(p0: P[], scale: number): Curve | null {
     const a = verts[k], b = k + 1 < m ? verts[k + 1] : verts[0] + n
     const A = p[a % n], B = p[b % n]
     const L = Math.hypot(B.x - A.x, B.y - A.y)
-    if (L < 22 * scale) return null
+    if (L < minSide) return null
     // ignora as pontas (perto dos cantos a borda arredonda)
     const cut = Math.max(2, Math.floor((b - a) * 0.15))
     const seg: P[] = []
     for (let i = a + cut; i <= b - cut; i++) seg.push(p[i % n])
     const f = fitLine(seg)
-    if (!f || f.rms > 0.9 * scale) return null
+    // lado longo: o tremor (arte traçada à mão, ampliada) se dilui; aceita mais
+    const longF = 1 + Math.min(1, L / (80 * scale))
+    if (!f || f.rms > 0.9 * scale * longF) return null
     // curva disfarçada (arco ou "S"): em algum quarto do lado os pontos ficam, em média,
     // longe da reta. Tremor de verdade se anula dentro de cada quarto.
     const res = seg.map((q) => (q.x - f.cx) * -f.dy + (q.y - f.cy) * f.dx)
@@ -351,7 +356,7 @@ function noisyPolygon(p0: P[], scale: number): Curve | null {
     for (let s0 = 0; s0 + qn <= res.length; s0 += qn) {
       let sm = 0
       for (let i = s0; i < s0 + qn; i++) sm += res[i]
-      if (Math.abs(sm / qn) > 0.35 * scale) return null
+      if (Math.abs(sm / qn) > 0.35 * scale * longF) return null
     }
     lines.push(f)
   }
@@ -394,13 +399,18 @@ function noisyPolygon(p0: P[], scale: number): Curve | null {
     for (const q of p0) { const d2 = (q.x - B.x) ** 2 + (q.y - B.y) ** 2; if (d2 < reach2 && d2 < dmin) dmin = d2 }
     dmin = Math.sqrt(dmin)
     const f = 1 / Math.sin(theta / 2) - 1
-    let r = dmin > 1.1 * scale && f > 0.05 ? dmin / f : 0
+    // canto vivo com antialiasing afasta os pontos ~1 px do vértice; só é arredondado de verdade
+    // se afasta bem mais que isso (e o raio resultante é visível)
+    let r = dmin > 1.8 * scale && f > 0.05 ? dmin / f : 0
     const tlenMax = Math.min(la, lc) * 0.4
     let tlen = r / Math.tan(theta / 2)
     if (tlen > tlenMax) { tlen = tlenMax; r = tlen * Math.tan(theta / 2) }
-    fillet.push({ r: r > 0.8 * scale ? r : 0, tlen, theta })
+    fillet.push({ r: r >= 2.5 * scale ? r : 0, tlen, theta })
   }
-  const lim = (2 * scale) ** 2, limTip = (4.5 * scale) ** 2, near2 = (10 * scale) ** 2
+  let perim = 0
+  for (let k = 0; k < m; k++) { const A = pts[k], B = pts[(k + 1) % m]; perim += Math.hypot(B.x - A.x, B.y - A.y) }
+  const longPoly = 1 + Math.min(1, perim / m / (80 * scale))
+  const lim = (2 * scale * longPoly) ** 2, limTip = (4.5 * scale * longPoly) ** 2, near2 = (10 * scale) ** 2
   for (const q of p0) {
     // perto de um canto arredondado a distância ao polígono vivo não vale
     if (fillet.some((f, k) => f.r > 0 && (q.x - pts[k].x) ** 2 + (q.y - pts[k].y) ** 2 < (f.tlen * 1.3) ** 2)) continue
@@ -445,6 +455,101 @@ function noisyPolygon(p0: P[], scale: number): Curve | null {
     }
   }
   return { start, segs, closed: true }
+}
+
+/**
+ * Versão aberta do polígono: cadeia entre dois encontros que é uma sequência de retas tremidas
+ * (contorno de letra que encosta em outra forma, borda cortada pela imagem). Pontas fixas.
+ */
+function noisyPolyline(p: P[], scale: number): Curve | null {
+  const n = p.length
+  if (n < 30) return null
+  const Wm = Math.max(3, Math.round(5 * scale))
+  const sm: P[] = []
+  for (let i = 0; i < n; i++) {
+    let sx = 0, sy = 0, c = 0
+    for (let j = -Wm; j <= Wm; j++) { const k = i + j; if (k < 0 || k >= n) continue; sx += p[k].x; sy += p[k].y; c++ }
+    sm.push({ x: sx / c, y: sy / c })
+  }
+  const idx = [0]
+  dp(sm, 0, n - 1, 2.2 * scale, idx)
+  idx.push(n - 1)
+  if (idx.length > 26) return null
+  const turn = (a: P, b: P, c: P) => {
+    const ux = b.x - a.x, uy = b.y - a.y, vx = c.x - b.x, vy = c.y - b.y
+    return Math.acos(Math.max(-1, Math.min(1, (ux * vx + uy * vy) / (Math.hypot(ux, uy) * Math.hypot(vx, vy) || 1)))) * 180 / Math.PI
+  }
+  let verts = idx.filter((v, k) => k === 0 || k === idx.length - 1 || turn(sm[idx[k - 1]], sm[v], sm[idx[k + 1]]) >= 30)
+  // lados curtos no meio: canto mordido, tira o vértice de menor giro
+  for (let guard = 0; guard < 20 && verts.length > 2; guard++) {
+    let ks = -1, best = Infinity
+    for (let k = 0; k < verts.length - 1; k++) {
+      const L = Math.hypot(sm[verts[k + 1]].x - sm[verts[k]].x, sm[verts[k + 1]].y - sm[verts[k]].y)
+      if (L < 22 * scale && L < best) { best = L; ks = k }
+    }
+    if (ks < 0) break
+    const cand = [ks, ks + 1].filter((k) => k > 0 && k < verts.length - 1)
+    if (!cand.length) return null
+    const tk = (k: number) => turn(sm[verts[k - 1]], sm[verts[k]], sm[verts[k + 1]])
+    const drop = cand.length === 2 && tk(cand[0]) >= tk(cand[1]) ? cand[1] : cand[0]
+    verts.splice(drop, 1)
+  }
+  const m = verts.length
+  if (m < 3) return null // uma reta só: straightChain faz melhor (ajusta as pontas)
+  const lines: { cx: number; cy: number; dx: number; dy: number }[] = []
+  for (let k = 0; k < m - 1; k++) {
+    const a = verts[k], b = verts[k + 1]
+    const L = Math.hypot(p[b].x - p[a].x, p[b].y - p[a].y)
+    if (L < 14 * scale) return null
+    const cut = Math.max(2, Math.floor((b - a) * 0.15))
+    const seg = p.slice(a + cut, b - cut + 1)
+    const f = fitLine(seg)
+    const longF = 1 + Math.min(1, L / (80 * scale))
+    if (!f || f.rms > 0.9 * scale * longF) return null
+    const res = seg.map((q) => (q.x - f.cx) * -f.dy + (q.y - f.cy) * f.dx)
+    const qn = Math.max(1, Math.floor(res.length / 4))
+    for (let s0 = 0; s0 + qn <= res.length; s0 += qn) {
+      let sum = 0
+      for (let i = s0; i < s0 + qn; i++) sum += res[i]
+      if (Math.abs(sum / qn) > 0.35 * scale * longF) return null
+    }
+    lines.push(f)
+  }
+  // vértices internos na interseção das retas. As pontas são vértices da grade (encontro de
+  // cores): ficam, mas a reta de verdade passa pela projeção delas na reta ajustada
+  const proj = (f: { cx: number; cy: number; dx: number; dy: number }, q: P) => { const tt = (q.x - f.cx) * f.dx + (q.y - f.cy) * f.dy; return { x: f.cx + f.dx * tt, y: f.cy + f.dy * tt } }
+  const pts: P[] = [p[0]]
+  const p0p = proj(lines[0], p[0])
+  if (Math.hypot(p0p.x - p[0].x, p0p.y - p[0].y) < 1.5 * scale) pts.push(p0p)
+  for (let k = 1; k < m - 1; k++) {
+    const a = lines[k - 1], b = lines[k]
+    const den = a.dx * b.dy - a.dy * b.dx
+    const orig = p[verts[k]]
+    let q = orig
+    if (Math.abs(den) > 0.05) {
+      const tt = ((b.cx - a.cx) * b.dy - (b.cy - a.cy) * b.dx) / den
+      const c = { x: a.cx + a.dx * tt, y: a.cy + a.dy * tt }
+      if (Math.hypot(c.x - orig.x, c.y - orig.y) < 6 * scale) q = c
+    }
+    pts.push(q)
+  }
+  const pnp = proj(lines[m - 2], p[n - 1])
+  if (Math.hypot(pnp.x - p[n - 1].x, pnp.y - p[n - 1].y) < 1.5 * scale) pts.push(pnp)
+  pts.push(p[n - 1])
+  // nenhum ponto longe da polilinha
+  const lim = (2.4 * scale) ** 2
+  for (const q of p) {
+    let best = Infinity
+    for (let k = 0; k < pts.length - 1; k++) {
+      const A = pts[k], B = pts[k + 1]
+      const vx = B.x - A.x, vy = B.y - A.y, L2 = vx * vx + vy * vy || 1e-9
+      const tt = Math.max(0, Math.min(1, ((q.x - A.x) * vx + (q.y - A.y) * vy) / L2))
+      const d = (A.x + vx * tt - q.x) ** 2 + (A.y + vy * tt - q.y) ** 2
+      if (d < best) best = d
+    }
+    if (best > lim) return null
+  }
+  return { start: pts[0], segs: pts.slice(1).map((q) => ({ t: 'L' as const, x: q.x, y: q.y })), closed: false }
 }
 
 // ---------- Círculo ----------
@@ -514,6 +619,10 @@ export function fitChain(raw: Float64Array, closed: boolean, opt: FitOptions, ha
   }
 
   // trecho aberto (entre dois encontros de cores) que é uma reta tremida: vira uma reta só
+  if (!closed && opt.primitives) {
+    const pl = noisyPolyline(p, opt.scale || 1)
+    if (pl) return pl
+  }
   if (!closed && opt.primitives && straightChain(p, opt.scale || 1)) {
     // as pontas são vértices da grade (encontro de cores); a reta de verdade passa pelos pontos
     // do meio, medidos com precisão sub-pixel. Liga as pontas à reta ajustada.

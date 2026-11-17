@@ -31,12 +31,17 @@ function detectAA(rgba: Uint8ClampedArray | Uint8Array, w: number, h: number): b
   // antialiasing = cores raras (cada pixel de borda tem um tom próprio de mistura)
   const colors = new Map<number, number>()
   const step = Math.max(1, Math.floor((w * h) / 200000))
-  let total = 0
+  let total = 0, semi = 0
   for (let i = 0; i < w * h; i += step) {
+    const a = rgba[i * 4 + 3]
+    if (a > 12 && a < 243) semi++
+    if (a < 128) { total++; continue } // transparente: a cor por baixo não conta
     const k = (rgba[i * 4] << 16) | (rgba[i * 4 + 1] << 8) | rgba[i * 4 + 2]
     colors.set(k, (colors.get(k) || 0) + 1)
     total++
   }
+  // PNG com transparência: o antialiasing costuma estar só no alfa (cor chapada + borda suave)
+  if (semi >= 40 && semi / total > 0.0005) return true
   if (colors.size > 256) return true
   let rare = 0
   const lim = Math.max(2, total * 0.0005)

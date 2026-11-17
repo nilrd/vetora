@@ -77,7 +77,8 @@ function pickPalette(lab: Float32Array, alpha: Uint8Array, w: number, h: number,
     pts = [...m.values()].map((e) => [e[1] / e[0], e[2] / e[0], e[3] / e[0], e[0]])
   }
   pts.sort((a, b) => b[3] - a[3])
-  const md = photo ? Math.min(inp.mergeDist, 9) : inp.mergeDist
+  // foto com quantidade de cores pedida: junta menos de saída, para a quantidade pedida valer
+  const md = photo ? Math.min(inp.mergeDist, inp.maxColors > 0 ? 4.5 : 9) : inp.mergeDist
   // agrupamento inicial apertado: tons próximos mas diferentes (creme × branco) ficam separados;
   // a junção de verdade acontece depois, olhando o tamanho de cada cor
   const md2 = photo ? md * md : Math.min(md, 5.5) ** 2
