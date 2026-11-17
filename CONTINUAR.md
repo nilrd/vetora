@@ -36,3 +36,8 @@ Vetorizador web 100% no navegador (TypeScript, Web Worker), site estático no Ve
 2. Marcar o defeito na imagem no "Ficou ruim?" (círculo), opcional.
 3. Pedir ao Jair mais artes de cores chapadas (logos, textos) pelo botão; tratar por tipo de falha, cada caso vira teste.
 4. Segurança: Nilson deve trocar a senha do banco e excluir o token `sbp_` quando terminar.
+
+## Relatos de 16/11, 23h21–23h47 (São Paulo)
+- 0f86b0b5-f3b0-4871-b135-7decc688b87c, 86571fae-c696-4b51-b341-e83ceaecd936 e d83675f0-afc4-4e52-943b-9a8169b8b27c: reproduzidos com as opções enviadas na revisão 3e0a244.
+- Em artes com muitos tons, a limpeza agora é mais leve, o tamanho mínimo de regiões cai de 5 para 3 px no detalhe padrão e a paleta automática pode chegar a 160 cores. O limite manual continua valendo quando escolhido.
+- Erro médio RGB entre o SVG renderizado no tamanho original e a entrada, sobre branco: personagens 7,881 → 6,983; Jujutsu 7,023 → 6,722; Levi 3,660 → 3,278. As diferenças horizontais de borda melhoraram nos personagens e no Levi, mas pioraram levemente no Jujutsu (8,244 → 8,399). O Jujutsu ainda precisa de confirmação visual, especialmente nas letras. Os SVGs ficaram maiores. Validação de impressão com Jair.

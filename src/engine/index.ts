@@ -84,7 +84,7 @@ export function vectorize(inp: EngineInput): VectorResult {
   const blurry = !photo && edgeSoftness(inp.rgba, W0, H0) > 0.65
   if (noisy || photo) {
     prog('limpando ruído', 0.02)
-    rgba = denoise(rgba, w, h, photo ? 1 : noise > 0.5 ? 3 : 2, photo ? 1 : 2, photo ? 6 : 14)
+    rgba = denoise(rgba, w, h, photo ? 1 : noise > 0.5 ? 3 : 2, photo ? 1 : 2, photo ? 4 : 14)
   }
   // imagem pequena: amplia 2x por dentro (mais pixels para as curvas); a saída volta ao tamanho original.
   // Automático: tira os "espinhos" de pontas finas em artes pequenas. Em JPEG colorido fica desligado,
@@ -97,7 +97,7 @@ export function vectorize(inp: EngineInput): VectorResult {
   const hasAA = up || detectAA(rgba, w, h)
 
   const detail = s.detail / 100
-  let minArea = photo ? Math.max(1, Math.round(8 - detail * 6)) : Math.max(1, Math.round(6 - detail * 5))
+  let minArea = photo ? Math.max(1, Math.round(6 - detail * 6)) : Math.max(1, Math.round(6 - detail * 5))
   if (noisy && !photo) minArea = Math.max(minArea, Math.round(Math.sqrt(W0 * H0) / 40))
   minArea *= K * K
   const mergeDist = 3 + (s.mergeSimilar / 100) * 16 // 3..19 ΔE

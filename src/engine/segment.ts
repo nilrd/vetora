@@ -78,7 +78,7 @@ function pickPalette(lab: Float32Array, alpha: Uint8Array, w: number, h: number,
   }
   pts.sort((a, b) => b[3] - a[3])
   // foto com quantidade de cores pedida: junta menos de saída, para a quantidade pedida valer
-  const md = photo ? Math.min(5, inp.mergeDist * 0.3) : inp.mergeDist
+  const md = photo ? Math.min(3.5, inp.mergeDist * 0.22) : inp.mergeDist
   // agrupamento inicial apertado: tons próximos mas diferentes (creme × branco) ficam separados;
   // a junção de verdade acontece depois, olhando o tamanho de cada cor
   const md2 = photo ? md * md : Math.min(md, 5.5) ** 2
@@ -154,7 +154,7 @@ function pickPalette(lab: Float32Array, alpha: Uint8Array, w: number, h: number,
   cl = cl.filter((c) => c[3] >= minW)
   if (!cl.length) cl = [[50, 0, 0, 1]]
   // limite de cores: junta o par mais barato (Ward)
-  const maxC = inp.maxColors > 0 ? inp.maxColors : photo ? 128 : 64
+  const maxC = inp.maxColors > 0 ? inp.maxColors : photo ? 160 : 64
   while (cl.length > maxC) {
     let bi = 0, bj = 1, bc = Infinity
     for (let i = 0; i < cl.length; i++)
