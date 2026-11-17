@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { IArrows } from './icons.tsx'
 
-export type ViewMode = 'compare' | 'vector' | 'original' | 'outline'
+export type ViewMode = 'compare' | 'side' | 'vector' | 'original' | 'outline'
 
 interface Props {
   imgUrl: string
@@ -28,10 +28,12 @@ export function Viewer(p: Props) {
     const el = vp.current
     if (!el) return
     const r = el.getBoundingClientRect()
-    const s = Math.min((r.width - 48) / p.width, (r.height - 48) / p.height)
+    // lado a lado: cada metade mostra a imagem inteira
+    const pw = p.mode === 'side' ? (r.width - 8) / 2 : r.width
+    const s = Math.min((pw - 48) / p.width, (r.height - 48) / p.height)
     const sc = Math.max(0.05, s)
-    setView({ s: sc, x: (r.width - p.width * sc) / 2, y: (r.height - p.height * sc) / 2 })
-  }, [p.width, p.height])
+    setView({ s: sc, x: (pw - p.width * sc) / 2, y: (r.height - p.height * sc) / 2 })
+  }, [p.width, p.height, p.mode])
 
   useLayoutEffect(() => { fit() }, [fit, p.imgUrl])
   useEffect(() => {
@@ -66,11 +68,13 @@ export function Viewer(p: Props) {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       const r = el.getBoundingClientRect()
-      zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top)
+      let cx = e.clientX - r.left
+      if (p.mode === 'side') { const pw = (r.width - 8) / 2; if (cx > pw) cx -= pw + 8 }
+      zoomAt(Math.exp(-e.deltaY * 0.0015), cx, e.clientY - r.top)
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [zoomAt])
+  }, [zoomAt, p.mode])
 
   const onDown = (e: React.PointerEvent) => {
     const knob = (e.target as HTMLElement).closest('.knob') != null
@@ -103,6 +107,32 @@ export function Viewer(p: Props) {
   const W = p.width * view.s, H = p.height * view.s
   const showOrig = p.mode === 'compare' || p.mode === 'original'
   const showVec = p.mode === 'compare' || p.mode === 'vector'
+  const tr = `translate(${view.x}px, ${view.y}px)`
+  if (p.mode === 'side') {
+    // duas telas com o MESMO zoom e posição: o que se faz numa acontece na outra
+    return (
+      <div
+        ref={vp}
+        className={`viewport side${grab ? ' grabbing' : ''}${p.pickable ? ' pick' : ''}`}
+        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+        onDoubleClick={() => fit()}
+        role="img" aria-label="Original e vetor lado a lado"
+      >
+        <div className="pane">
+          <div className="canvas" style={{ width: W, height: H, transform: tr }}>
+            <img src={p.imgUrl} alt="" draggable={false} style={{ imageRendering: view.s > 2 ? 'pixelated' : 'auto' }} />
+          </div>
+          <span className="tag-corner l">Original</span>
+        </div>
+        <div className="pane">
+          <div className="canvas" style={{ width: W, height: H, transform: tr }}>
+            <div className={`vec${p.pickable ? ' pickable' : ''}`} dangerouslySetInnerHTML={{ __html: p.svg }} />
+          </div>
+          <span className="tag-corner r">Vetor</span>
+        </div>
+      </div>
+    )
+  }
   return (
     <div
       ref={vp}

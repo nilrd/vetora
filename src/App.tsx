@@ -170,7 +170,7 @@ export default function App() {
           <div className="stage">
             <div className="toolbar">
               <div className="seg" role="group" aria-label="Visualização">
-                {([['compare', 'Comparar'], ['vector', 'Vetor'], ['original', 'Original'], ['outline', 'Contornos']] as const).map(([id, l]) => (
+                {([['compare', 'Cortina'], ['side', 'Lado a lado'], ['vector', 'Vetor'], ['original', 'Original'], ['outline', 'Contornos']] as const).map(([id, l]) => (
                   <button key={id} aria-pressed={mode === id} onClick={() => setMode(id)}>{l}</button>
                 ))}
               </div>
