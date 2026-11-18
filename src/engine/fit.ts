@@ -231,13 +231,14 @@ function tangentAt(p: P[], i: number, dir: 1 | -1, last: number, first: number) 
   return norm(sub(p[i + dir * k], p[i]))
 }
 
-function fitRun(p: P[], first: number, last: number, err: number, out: Seg[], scale = 0) {
+/** tIn/tOut: tangentes impostas nas pontas (vindas de uma reta vizinha), para a junção ficar lisa. */
+function fitRun(p: P[], first: number, last: number, err: number, out: Seg[], scale = 0, tIn?: P, tOut?: P) {
   if (last - first < 1) return
   if (last - first === 1) { out.push({ t: 'L', x: p[last].x, y: p[last].y }); return }
   // trecho entre dois cantos que é uma reta tremida: uma reta só
-  if (scale > 0 && straightChain(p.slice(first, last + 1), scale)) { out.push({ t: 'L', x: p[last].x, y: p[last].y }); return }
-  const t1 = tangentAt(p, first, 1, last, first)
-  const t2 = tangentAt(p, last, -1, last, first)
+  if (scale > 0 && !tIn && !tOut && straightChain(p.slice(first, last + 1), scale)) { out.push({ t: 'L', x: p[last].x, y: p[last].y }); return }
+  const t1 = tIn ?? tangentAt(p, first, 1, last, first)
+  const t2 = tOut ?? tangentAt(p, last, -1, last, first)
   fitCubic(p, first, last, t1, t2, err, out)
 }
 
@@ -552,6 +553,84 @@ function noisyPolyline(p: P[], scale: number): Curve | null {
   return { start: pts[0], segs: pts.slice(1).map((q) => ({ t: 'L' as const, x: q.x, y: q.y })), closed: false }
 }
 
+// ---------- Trechos retos dentro de uma curva ----------
+
+/**
+ * Acha, dentro do trecho [a, b], pedaços que são RETAS (a lateral de uma haste com ponta redonda,
+ * o lado de um "D"). Sem isso a lateral é ajustada como curva e segue a escadinha da borda: sai ondulada.
+ * Critério: longo (>= 40 px da imagem), todos os pontos perto da corda e SEM barriga: um arco
+ * grande também fica perto da corda, mas o meio dele fica de um lado e as pontas do outro.
+ */
+function lineSpans(q: P[], a: number, b: number, scale: number): [number, number][] {
+  const out: [number, number][] = []
+  const minLen = 40 * scale, tol = 0.8 * scale, maxBow = 0.08 * scale
+  const chordOk = (i: number, j: number) => {
+    const A = q[i], B = q[j]
+    const L = Math.hypot(B.x - A.x, B.y - A.y)
+    if (L < 1e-9) return false
+    for (let k = i + 1; k < j; k++) if (Math.abs((q[k].x - A.x) * (B.y - A.y) - (q[k].y - A.y) * (B.x - A.x)) / L > tol) return false
+    return true
+  }
+  const straight = (i: number, j: number) => {
+    const seg = q.slice(i, j + 1)
+    const f = fitLine(seg)
+    if (!f || f.rms > 0.35 * scale) return false
+    const res = seg.map((r) => (r.x - f.cx) * -f.dy + (r.y - f.cy) * f.dx)
+    const t3 = Math.floor(res.length / 3)
+    if (t3 < 2) return false
+    let mid = 0, ends = 0
+    for (let k = 0; k < res.length; k++) { if (k >= t3 && k < res.length - t3) mid += res[k]; else ends += res[k] }
+    const bow = mid / (res.length - 2 * t3) - ends / (2 * t3)
+    return Math.abs(bow) <= maxBow
+  }
+  let i = a
+  const minPts = Math.max(6, Math.round(6 * scale))
+  while (i + minPts <= b) {
+    if (!chordOk(i, i + minPts)) { i++; continue }
+    // cresce enquanto a corda aguenta (passos que dobram, depois volta ao último bom)
+    let good = i + minPts, step = minPts
+    while (good + step <= b && chordOk(i, good + step)) { good += step; step *= 2 }
+    for (let s = step >> 1; s >= 1; s >>= 1) if (good + s <= b && chordOk(i, good + s)) good += s
+    const L = Math.hypot(q[good].x - q[i].x, q[good].y - q[i].y)
+    if (L >= minLen && straight(i, good)) { out.push([i, good]); i = good } else i++
+  }
+  return out
+}
+
+/** fitRun, mas com os trechos retos viram reta (as junções caem na reta ajustada). */
+function fitRunSpans(q: P[], a: number, b: number, err: number, out: Seg[], scale: number) {
+  // só sem ampliação interna (scale 1): em imagem pequena ampliada a escadinha já some e as retas atrapalham
+  if (scale !== 1 || b - a < 12) { fitRun(q, a, b, err, out, scale); return }
+  // só mexe onde o ajuste normal está ondulando (muitos pedaços para o tamanho do trecho);
+  // borda limpa, que já sai lisa, fica exatamente como era
+  const tmp: Seg[] = []
+  fitRun(q, a, b, err, tmp, scale)
+  let len = 0
+  for (let i = a + 1; i <= b; i++) len += Math.hypot(q[i].x - q[i - 1].x, q[i].y - q[i - 1].y)
+  if (tmp.length <= 1 + len / (50 * scale)) { out.push(...tmp); return }
+  const spans = lineSpans(q, a, b, scale)
+  if (!spans.length) { out.push(...tmp); return }
+  // pontas internas de cada reta: projetadas na reta ajustada (cantos e pontas do trecho ficam)
+  for (const [s, e] of spans) {
+    const f = fitLine(q.slice(s, e + 1))
+    if (!f) continue
+    const proj = (r: P) => { const t = (r.x - f.cx) * f.dx + (r.y - f.cy) * f.dy; return { x: f.cx + f.dx * t, y: f.cy + f.dy * t } }
+    if (s !== a) q[s] = proj(q[s])
+    if (e !== b) q[e] = proj(q[e])
+  }
+  // direção de cada reta: a curva que encosta nela sai/chega na mesma direção (sem quina)
+  const dir = spans.map(([s, e]) => norm(sub(q[e], q[s])))
+  let cur = a
+  let prevDir: P | undefined
+  spans.forEach(([s, e], k) => {
+    if (s > cur) fitRun(q, cur, s, err, out, scale, prevDir, mul(dir[k], -1))
+    out.push({ t: 'L', x: q[e].x, y: q[e].y })
+    cur = e
+    prevDir = dir[k]
+  })
+  if (cur < b) fitRun(q, cur, b, err, out, scale, prevDir, undefined)
+}
+
 // ---------- Círculo ----------
 
 function fitCircle(p: P[]): { cx: number; cy: number; r: number; err: number } | null {
@@ -659,6 +738,18 @@ export function fitChain(raw: Float64Array, closed: boolean, opt: FitOptions, ha
   const segs: Seg[] = []
   if (closed) {
     if (corners.length === 0) {
+      // sem cantos, mas com laterais retas (haste de ponta redonda): começa numa reta e segue
+      if (opt.primitives) {
+        const sc = opt.scale || 1
+        const q0 = [...p, p[0]]
+        const sp = lineSpans(q0, 0, n, sc)
+        if (sp.length) {
+          const s = sp[0][0]
+          const q = [...p.slice(s), ...p.slice(0, s), p[s]]
+          fitRunSpans(q, 0, n, opt.tolerance, segs, sc)
+          return { start: q[0], segs, closed }
+        }
+      }
       // divide em duas metades com tangente contínua
       const half = Math.floor(n / 2)
       const q = [...p, p[0]]
@@ -673,11 +764,11 @@ export function fitChain(raw: Float64Array, closed: boolean, opt: FitOptions, ha
     const q = [...p.slice(s), ...p.slice(0, s), p[s]]
     const cs = corners.map((c) => (c - s + n) % n).sort((a, b) => a - b)
     cs.push(n)
-    for (let i = 0; i < cs.length - 1; i++) fitRun(q, cs[i], cs[i + 1], opt.tolerance, segs, opt.primitives ? opt.scale || 1 : 0)
+    for (let i = 0; i < cs.length - 1; i++) fitRunSpans(q, cs[i], cs[i + 1], opt.tolerance, segs, opt.primitives ? opt.scale || 1 : 0)
     return { start: q[0], segs, closed }
   }
   const cs = [0, ...corners.filter((c) => c > 0 && c < n - 1), n - 1]
-  for (let i = 0; i < cs.length - 1; i++) fitRun(p, cs[i], cs[i + 1], opt.tolerance, segs, opt.primitives ? opt.scale || 1 : 0)
+  for (let i = 0; i < cs.length - 1; i++) fitRunSpans(p, cs[i], cs[i + 1], opt.tolerance, segs, opt.primitives ? opt.scale || 1 : 0)
   return { start: p[0], segs, closed }
 }
 
