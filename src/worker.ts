@@ -6,7 +6,7 @@ export type WorkerIn = { id: number; rgba: Uint8ClampedArray; width: number; hei
 export type WorkerOut =
   | { id: number; type: 'progress'; stage: string; fraction: number }
   | { id: number; type: 'done'; result: ReturnType<typeof vectorize> }
-  | { id: number; type: 'error'; message: string }
+  | { id: number; type: 'error'; message: string; stack?: string }
 
 self.onmessage = (ev: MessageEvent<WorkerIn>) => {
   const { id, rgba, width, height, settings } = ev.data
@@ -23,6 +23,6 @@ self.onmessage = (ev: MessageEvent<WorkerIn>) => {
     })
     ;(self as unknown as Worker).postMessage({ id, type: 'done', result } satisfies WorkerOut)
   } catch (e) {
-    ;(self as unknown as Worker).postMessage({ id, type: 'error', message: e instanceof Error ? e.message : String(e) } satisfies WorkerOut)
+    ;(self as unknown as Worker).postMessage({ id, type: 'error', message: e instanceof Error ? e.message : String(e), stack: e instanceof Error ? e.stack : undefined } satisfies WorkerOut)
   }
 }

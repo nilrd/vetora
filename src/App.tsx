@@ -12,6 +12,7 @@ import { Home } from './ui/Home.tsx'
 import { Batch } from './ui/Batch.tsx'
 import { RelatoDialog } from './ui/Relato.tsx'
 import { enviarRelato } from './lib/relato.ts'
+import { registrarErro, definirContexto } from './lib/erros.ts'
 import { IEraser, IFit, IMinus, IPlus, IRedo, IUndo, IImage } from './ui/icons.tsx'
 
 interface Edits { hidden: Set<number>; hiddenColors: Set<number>; overrides: Map<number, RGB>; regionColors: Map<number, RGB> }
@@ -69,6 +70,7 @@ export default function App() {
       setSettings((s) => ({ ...s, palette: undefined, mergeMap: undefined }))
       if (li.scaled) flash(`Imagem reduzida para ${li.data.width}×${li.data.height} px para caber no limite de 4 MP.`)
     } catch (e) {
+      registrarErro('carregar', e, `${name} ${f.type} ${f.size} bytes`)
       setLoadErr(e instanceof Error ? e.message : 'Não deu para abrir essa imagem.')
     }
   }, [resetVectorizer])
@@ -76,6 +78,10 @@ export default function App() {
   // vetoriza de novo quando a imagem ou os ajustes mudam (com uma pequena espera nos sliders)
   useEffect(() => {
     if (!img) return
+    definirContexto({
+      imagem: { nome: img.name, largura: img.origWidth, altura: img.origHeight, bytes: img.file.size, tipo: img.file.type },
+      configuracoes: { ...settings, palette: undefined, mergeMap: undefined },
+    })
     const t = setTimeout(() => { vz.run(img.data, settings).catch(() => {}) }, 220)
     return () => clearTimeout(t)
   }, [img, settings]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -134,7 +140,8 @@ export default function App() {
     try {
       const blob = await exportFile(edited, exp, hidden)
       download(blob, `${baseName(img.name)}-vetora.${exp.format}`)
-    } catch {
+    } catch (e) {
+      registrarErro('exportar', e, `formato ${exp.format}`)
       flash('Não deu para gerar o arquivo. Tente outro formato.')
     } finally { setDownloading(false) }
   }
@@ -245,7 +252,11 @@ export default function App() {
       {relato && img && edited && (
         <RelatoDialog
           onClose={() => setRelato(false)}
-          onSend={(comentario) => enviarRelato({ nome: img.name, original: img.file, largura: img.origWidth, altura: img.origHeight, resultadoSvg: buildSvg(edited, exp, hidden), settings, exp, comentario })}
+          onSend={async (comentario) => {
+            try {
+              return await enviarRelato({ nome: img.name, original: img.file, largura: img.origWidth, altura: img.origHeight, resultadoSvg: buildSvg(edited, exp, hidden), settings, exp, comentario })
+            } catch (e) { registrarErro('relato', e, `${img.name} ${img.file.size} bytes`); throw e }
+          }}
         />
       )}
       {toast && <div className="toast" role="status">{toast}</div>}

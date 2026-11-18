@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { registrarErro } from './erros.ts'
 import type { Settings, VectorResult } from '../engine/types.ts'
 import type { WorkerOut } from '../worker.ts'
 
@@ -35,9 +36,17 @@ export function useVectorizer() {
         if (m.id !== idRef.current) return
         if (m.type === 'progress') setProgress({ stage: m.stage, fraction: m.fraction })
         else if (m.type === 'done') { busyRef.current = false; setResult(m.result); setStatus('done'); resolve(m.result) }
-        else { busyRef.current = false; setResult(null); setError(m.message); setStatus('error'); reject(new Error(m.message)) }
+        else {
+          busyRef.current = false; setResult(null); setError(m.message); setStatus('error')
+          registrarErro('vetorizar', m.message, m.stack)
+          reject(new Error(m.message))
+        }
       }
-      w.onerror = (e) => { busyRef.current = false; setResult(null); setError(e.message || 'Erro no processamento'); setStatus('error'); reject(e) }
+      w.onerror = (e) => {
+        busyRef.current = false; setResult(null); setError(e.message || 'Erro no processamento'); setStatus('error')
+        registrarErro('vetorizar', e.message || 'erro no worker', `${e.filename ?? ''}:${e.lineno ?? ''}`)
+        reject(e)
+      }
       const copy = new Uint8ClampedArray(img.data)
       w.postMessage({ id, rgba: copy, width: img.width, height: img.height, settings }, [copy.buffer])
     })
