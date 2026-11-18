@@ -1,5 +1,5 @@
 import { segment } from './segment.ts'
-import { noiseLevel, denoise, upscale2x, edgeSoftness, hasContinuousTones } from './denoise.ts'
+import { noiseLevel, denoise, upscale2x, edgeSoftness, hasContinuousTones, jpegBlockiness, deblock } from './denoise.ts'
 import { trace } from './trace.ts'
 import { chainPoints } from './subpixel.ts'
 import { fitChain, reverseCurve } from './fit.ts'
@@ -82,9 +82,14 @@ export function vectorize(inp: EngineInput): VectorResult {
   const noise = noiseLevel(rgba, w, h)
   const noisy = noise > 0.06
   const blurry = !photo && edgeSoftness(inp.rgba, W0, H0) > 0.65
+  // ilustração/foto em JPEG: tira a grade 8×8 antes de tudo. Sem isso as sombras e a pele viram
+  // "quadradinhos" (cada degrau do bloco vira uma forma). Só age se a grade for detectada.
+  const blocky = photo && jpegBlockiness(rgba, w, h) > 1.2
+  if (blocky) { prog('limpando JPEG', 0.01); rgba = deblock(rgba, w, h) }
   if (noisy || photo) {
     prog('limpando ruído', 0.02)
-    rgba = denoise(rgba, w, h, photo ? 1 : noise > 0.5 ? 3 : 2, photo ? 1 : 2, photo ? 4 : 14)
+    // JPEG em blocos: uma passada a mais, ainda leve (raio 1), para o chiado que sobra dentro do bloco
+    rgba = denoise(rgba, w, h, photo ? (blocky ? 2 : 1) : noise > 0.5 ? 3 : 2, photo ? 1 : 2, photo ? (blocky ? 6 : 4) : 14)
   }
   // imagem pequena: amplia 2x por dentro (mais pixels para as curvas); a saída volta ao tamanho original.
   // Automático: tira os "espinhos" de pontas finas em artes pequenas. Em JPEG colorido fica desligado,
@@ -115,7 +120,9 @@ export function vectorize(inp: EngineInput): VectorResult {
     if (i % 500 === 0) prog('curvas', 0.6 + (i / tr.chains.length) * 0.35)
     const pts = chainPoints(ch, seg, rgba, tr.H, hasAA)
     // com ruído (JPEG) a borda medida treme: suaviza mais
-    return fitChain(pts, ch.closed, { tolerance, cornerAngle, smooth: photo ? 0.5 : noisy ? 1.5 : hasAA ? 0.5 : 1, primitives: !photo, scale: K }, hasAA)
+    // foto/ilustração: sem polígonos e círculos (rosto e cabelo não são geometria), mas com as retas
+    // (texto, molduras, telas). JPEG em blocos treme mais a borda: um pouco mais de suavização.
+    return fitChain(pts, ch.closed, { tolerance, cornerAngle, smooth: photo ? (blocky ? 1 : 0.5) : noisy ? 1.5 : hasAA ? 0.5 : 1, primitives: !photo, lines: true, scale: K }, hasAA)
   })
 
   // fundo a remover: a cor que mais aparece na borda da imagem

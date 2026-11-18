@@ -138,3 +138,58 @@ export function edgeSoftness(a: Uint8ClampedArray | Uint8Array, w: number, h: nu
     }
   return edges ? soft / edges : 0
 }
+
+/**
+ * Quanto a imagem mostra a grade 8×8 do JPEG: diferença média entre vizinhos nas costuras dos blocos
+ * (x ou y múltiplo de 8) dividida pela diferença média dentro dos blocos. Só conta diferenças pequenas
+ * (as grandes são bordas do desenho). Sem grade ≈ 1; JPEG forte passa de 1,3.
+ */
+export function jpegBlockiness(a: Uint8ClampedArray | Uint8Array, w: number, h: number): number {
+  if (w < 32 || h < 32) return 1
+  let seam = 0, nSeam = 0, inner = 0, nInner = 0
+  const step = Math.max(1, Math.floor(h / 300))
+  const lum = (i: number) => a[i * 4] * 0.299 + a[i * 4 + 1] * 0.587 + a[i * 4 + 2] * 0.114
+  for (let y = 0; y < h; y += step)
+    for (let x = 1; x < w; x++) {
+      const i = y * w + x
+      if (a[i * 4 + 3] < 250 || a[(i - 1) * 4 + 3] < 250) continue
+      const d = Math.abs(lum(i) - lum(i - 1))
+      if (d > 20) continue
+      if (x % 8 === 0) { seam += d; nSeam++ } else { inner += d; nInner++ }
+    }
+  if (nSeam < 200 || nInner < 200) return 1
+  const ins = inner / nInner
+  return ins < 0.3 ? 1 : seam / nSeam / ins
+}
+
+/**
+ * Tira os "quadradinhos" do JPEG: em cada costura da grade 8×8, se o degrau entre os dois lados é
+ * pequeno (não é uma borda do desenho) e cada lado é liso, espalha o degrau pelos 4 pixels em volta.
+ * Bordas de verdade (degrau grande ou lado com textura) ficam como estão.
+ */
+export function deblock(src: Uint8ClampedArray | Uint8Array, w: number, h: number, maxStep = 22, passes = 2): Uint8ClampedArray {
+  const a = new Uint8ClampedArray(src)
+  const flat = 6 // variação máxima dentro de cada lado para considerar "liso"
+  const fix = (i0: number, i1: number, i2: number, i3: number) => {
+    // i0 i1 | i2 i3  (a costura fica entre i1 e i2)
+    if (a[i0 * 4 + 3] < 250 || a[i3 * 4 + 3] < 250) return
+    // os três canais decidem juntos (senão um canal suaviza e outro não, e a cor desvia)
+    for (let c = 0; c < 3; c++) {
+      const p0 = a[i0 * 4 + c], p1 = a[i1 * 4 + c], q0 = a[i2 * 4 + c], q1 = a[i3 * 4 + c]
+      if (Math.abs(q0 - p1) > maxStep || Math.abs(p1 - p0) > flat || Math.abs(q1 - q0) > flat) return
+    }
+    for (let c = 0; c < 3; c++) {
+      const p0 = a[i0 * 4 + c], p1 = a[i1 * 4 + c], q0 = a[i2 * 4 + c], q1 = a[i3 * 4 + c]
+      const step = q0 - p1
+      a[i0 * 4 + c] = p0 + step / 8
+      a[i1 * 4 + c] = p1 + (step * 3) / 8
+      a[i2 * 4 + c] = q0 - (step * 3) / 8
+      a[i3 * 4 + c] = q1 - step / 8
+    }
+  }
+  for (let p = 0; p < passes; p++) {
+    for (let y = 0; y < h; y++) for (let x = 8; x < w - 1; x += 8) { const i = y * w + x; fix(i - 2, i - 1, i, i + 1) }
+    for (let y = 8; y < h - 1; y += 8) for (let x = 0; x < w; x++) { const i = y * w + x; fix(i - 2 * w, i - w, i, i + w) }
+  }
+  return a
+}

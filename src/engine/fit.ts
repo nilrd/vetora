@@ -11,6 +11,8 @@ export interface FitOptions {
   primitives: boolean
   /** px internos por px da imagem original (ampliação interna) */
   scale?: number
+  /** só a detecção de trechos retos, mesmo sem as outras formas (foto/ilustração: texto e molduras) */
+  lines?: boolean
 }
 
 type P = { x: number; y: number }
@@ -739,7 +741,7 @@ export function fitChain(raw: Float64Array, closed: boolean, opt: FitOptions, ha
   if (closed) {
     if (corners.length === 0) {
       // sem cantos, mas com laterais retas (haste de ponta redonda): começa numa reta e segue
-      if (opt.primitives) {
+      if (opt.primitives || opt.lines) {
         const sc = opt.scale || 1
         const q0 = [...p, p[0]]
         const sp = lineSpans(q0, 0, n, sc)
@@ -764,11 +766,11 @@ export function fitChain(raw: Float64Array, closed: boolean, opt: FitOptions, ha
     const q = [...p.slice(s), ...p.slice(0, s), p[s]]
     const cs = corners.map((c) => (c - s + n) % n).sort((a, b) => a - b)
     cs.push(n)
-    for (let i = 0; i < cs.length - 1; i++) fitRunSpans(q, cs[i], cs[i + 1], opt.tolerance, segs, opt.primitives ? opt.scale || 1 : 0)
+    for (let i = 0; i < cs.length - 1; i++) fitRunSpans(q, cs[i], cs[i + 1], opt.tolerance, segs, opt.primitives || opt.lines ? opt.scale || 1 : 0)
     return { start: q[0], segs, closed }
   }
   const cs = [0, ...corners.filter((c) => c > 0 && c < n - 1), n - 1]
-  for (let i = 0; i < cs.length - 1; i++) fitRunSpans(p, cs[i], cs[i + 1], opt.tolerance, segs, opt.primitives ? opt.scale || 1 : 0)
+  for (let i = 0; i < cs.length - 1; i++) fitRunSpans(p, cs[i], cs[i + 1], opt.tolerance, segs, opt.primitives || opt.lines ? opt.scale || 1 : 0)
   return { start: p[0], segs, closed }
 }
 
